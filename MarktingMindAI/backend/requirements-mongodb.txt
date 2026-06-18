@@ -1,0 +1,12 @@
+# MongoDB Driver
+pymongo
+motor
+
+# Python Environment
+python-dotenv
+
+# Async Support
+# greenlet
+
+# Connection Pooling
+dnspython
