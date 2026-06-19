@@ -51,9 +51,16 @@ export function AppShell({ children, health, onRefresh, refreshing, currentUser,
 
         <section className="sidebar-panel" aria-label="Backend health and controls">
           {currentUser ? (
-            <NavLink to="/profile" className="status-row profile-link" aria-label="View profile">
-              <span>{currentUser.name}</span>
-              <span className="status-pill available" title={currentUser.role}>{currentUser.role.replaceAll('_', ' ')}</span>
+            <NavLink to="/profile" className="profile-link profile-link-card" aria-label="View profile">
+              <div className="profile-avatar-small" aria-hidden="true">
+                {currentUser.name?.split(' ').map((part) => part[0]).join('') || 'U'}
+              </div>
+              <div className="profile-link-copy">
+                <strong>{currentUser.name}</strong>
+                <span className="status-pill available" title={currentUser.role}>
+                  {currentUser.role.replaceAll('_', ' ')}
+                </span>
+              </div>
             </NavLink>
           ) : null}
           <div className="status-row" aria-live="polite">

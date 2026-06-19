@@ -167,16 +167,30 @@
     "employmentType": "Both Contract & Full Time",
     "rate": "$85/hr",
     "visa": "H1B",
-    "workMode": "Hybrid"
+    "workMode": "Hybrid",
+    "jobTitles": [
+      "Senior Java Developer",
+      "Backend Engineer"
+    ],
+    "resumeFileName": "",
+    "resumeSummary": "",
+    "resumeSkills": [
+      "Java",
+      "Spring Boot",
+      "AWS",
+      "Python"
+    ]
   },
   "job_automation": {
-    "autoApply": true,
-    "matchThreshold": 75,
+    "autoApply": false,
+    "matchThreshold": 70,
     "maxApplications": 20,
     "alerts": true,
     "tailorCv": true,
     "scheduleEnabled": true,
-    "scheduleLabel": "Every 2 hours between 08:00 and 18:00"
+    "scheduleLabel": "Every 2 hours between 08:00 and 18:00",
+    "scheduleTimezone": "America/New_York",
+    "scheduleTime": "09:00"
   },
   "search_config": {
     "titles": [
@@ -185,12 +199,29 @@
       "Backend Developer",
       "Python Developer",
       "Data Engineer",
-      "Full Stack Developer"
+      "Full Stack Developer",
+      "Ai Architect",
+      "Cloud Angels, Ai Architect | 02/2026 \u2013 Present",
+      "\u00b7 Client: Centrica \u2013 Ai Architect",
+      "Architectures, And Best Practices Across Enterprise Transformation Programs.",
+      "Envision Enterprise Solution, Enterprise Ai Architect 01/2023 \u2013 02/2026",
+      "Client: Otsi - Enterprise Ai Architect"
     ],
     "requiredSkills": [
       "Java",
       "Spring Boot",
-      "Microservices"
+      "Microservices",
+      "Aws",
+      "Azure",
+      "Docker",
+      "Kubernetes",
+      "Langchain",
+      "Llm",
+      "Machine learning",
+      "Mlops",
+      "Python",
+      "Rest",
+      "Spring"
     ],
     "optionalSkills": [
       "AWS",
@@ -204,7 +235,14 @@
       "Posted in 24h",
       "Exclude staffing duplicates"
     ],
-    "excludeKeywords": []
+    "excludeKeywords": [],
+    "employmentType": "Both",
+    "minMatchScore": 70,
+    "postedWithin": "7",
+    "experienceLevel": "Any",
+    "rateMin": "",
+    "rateMax": "",
+    "repeatEvery": "Once daily"
   },
   "saved_jobs": [
     1
@@ -229,11 +267,13 @@
   "carrier_items": [
     {
       "name": "Northwind Careers",
-      "url": "https://northwind.example.com/careers"
+      "url": "https://northwind.example.com/careers",
+      "status": "Monitoring"
     },
     {
       "name": "Signal Forge Jobs",
-      "url": "https://signalforge.example.com/jobs"
+      "url": "https://signalforge.example.com/jobs",
+      "status": "Monitoring"
     }
   ],
   "day_report_rows": [
@@ -453,7 +493,11 @@
         "Java",
         "Spring Boot",
         "AWS"
-      ]
+      ],
+      "portalName": "Dice",
+      "portalUrl": "https://www.dice.com",
+      "sourceUrl": "https://www.dice.com/jobs/1",
+      "description": "Senior Java Developer at Northwind Systems in Dallas, TX. Skills: Java, Spring Boot, AWS. Type: C2C."
     },
     {
       "id": 2,
@@ -469,7 +513,11 @@
         "Python",
         "Snowflake",
         "Airflow"
-      ]
+      ],
+      "portalName": "Monster",
+      "portalUrl": "https://www.monster.com",
+      "sourceUrl": "https://www.monster.com/jobs/2",
+      "description": "Data Engineer at Atlas Analytics in Austin, TX. Skills: Python, Snowflake, Airflow. Type: W2."
     },
     {
       "id": 3,
@@ -485,7 +533,11 @@
         "Python",
         "LLM",
         "Azure"
-      ]
+      ],
+      "portalName": "CareerBuilder",
+      "portalUrl": "https://www.careerbuilder.com",
+      "sourceUrl": "https://www.careerbuilder.com/jobs/3",
+      "description": "AI/ML Engineer at Signal Forge in Remote. Skills: Python, LLM, Azure. Type: C2H."
     },
     {
       "id": 4,
@@ -501,7 +553,11 @@
         "React",
         "TypeScript",
         "Design Systems"
-      ]
+      ],
+      "portalName": "Dice",
+      "portalUrl": "https://www.dice.com",
+      "sourceUrl": "https://www.dice.com/jobs/4",
+      "description": "Frontend Developer at Lattice Digital in Irving, TX. Skills: React, TypeScript, Design Systems. Type: Full Time."
     },
     {
       "id": 5,
@@ -518,7 +574,11 @@
         "Microservices",
         "Kafka",
         "Docker"
-      ]
+      ],
+      "portalName": "Monster",
+      "portalUrl": "https://www.monster.com",
+      "sourceUrl": "https://www.monster.com/jobs/5",
+      "description": "Java Microservices Architect at Innovate Tech in New York, NY. Skills: Java, Microservices, Kafka, Docker. Type: C2C."
     },
     {
       "id": 6,
@@ -535,7 +595,11 @@
         "React",
         "Spring",
         "MongoDB"
-      ]
+      ],
+      "portalName": "CareerBuilder",
+      "portalUrl": "https://www.careerbuilder.com",
+      "sourceUrl": "https://www.careerbuilder.com/jobs/6",
+      "description": "Full Stack Java Developer at Digital Labs in Chicago, IL. Skills: Java, React, Spring, MongoDB. Type: Full Time."
     }
   ],
   "linkedin_jobs": [
@@ -548,7 +612,10 @@
       "match": 89,
       "easyApply": true,
       "applicants": 24,
-      "insight": "3 shared connections"
+      "insight": "3 shared connections",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/824218209",
+      "experienceLevel": "senior",
+      "datePosted": "3h ago"
     },
     {
       "role": "Senior UI Engineer",
@@ -559,7 +626,10 @@
       "match": 84,
       "easyApply": true,
       "applicants": 11,
-      "insight": "Hiring manager active today"
+      "insight": "Hiring manager active today",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/354919019",
+      "experienceLevel": "senior",
+      "datePosted": "1d ago"
     },
     {
       "role": "MLOps Engineer",
@@ -570,7 +640,10 @@
       "match": 76,
       "easyApply": false,
       "applicants": 19,
-      "insight": "Matched 7 core skills"
+      "insight": "Matched 7 core skills",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/836174526",
+      "experienceLevel": "mid",
+      "datePosted": "5h ago"
     },
     {
       "role": "Senior Java Developer",
@@ -581,7 +654,10 @@
       "match": 91,
       "easyApply": true,
       "applicants": 47,
-      "insight": "Your profile is a strong match"
+      "insight": "Your profile is a strong match",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/567922602",
+      "experienceLevel": "senior",
+      "datePosted": "3h ago"
     },
     {
       "role": "Java Spring Boot Engineer",
@@ -592,7 +668,10 @@
       "match": 86,
       "easyApply": false,
       "applicants": 123,
-      "insight": "3 connections work here"
+      "insight": "3 connections work here",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/576120162",
+      "experienceLevel": "mid",
+      "datePosted": "1d ago"
     },
     {
       "role": "Backend Java Architect",
@@ -603,7 +682,10 @@
       "match": 78,
       "easyApply": true,
       "applicants": 28,
-      "insight": "New job \u2014 be an early applicant!"
+      "insight": "New job \u2014 be an early applicant!",
+      "linkedinUrl": "https://www.linkedin.com/jobs/view/863768532",
+      "experienceLevel": "mid",
+      "datePosted": "5h ago"
     }
   ],
   "applications": [
@@ -613,7 +695,11 @@
       "status": "Applied",
       "stage": "Application submitted from test endpoint",
       "updated": "2026-06-03",
-      "action": "Await recruiter response"
+      "action": "Await recruiter response",
+      "portal": "Dice",
+      "date": "2026-06-03",
+      "match": 88,
+      "postingUrl": "https://www.monster.com/jobs/2"
     },
     {
       "role": "Senior Java Developer",
@@ -621,7 +707,11 @@
       "status": "Applied",
       "stage": "Application submitted from test endpoint",
       "updated": "2026-06-03",
-      "action": "Await recruiter response"
+      "action": "Await recruiter response",
+      "portal": "Monster",
+      "date": "2026-06-03",
+      "match": 92,
+      "postingUrl": "https://www.dice.com/jobs/1"
     },
     {
       "role": "Senior Java Developer",
@@ -629,7 +719,11 @@
       "status": "Interview",
       "stage": "Technical round",
       "updated": "2026-05-27",
-      "action": "Share availability slots"
+      "action": "Share availability slots",
+      "portal": "Monster",
+      "date": "2026-05-27",
+      "match": 92,
+      "postingUrl": "https://www.dice.com/jobs/1"
     },
     {
       "role": "Data Engineer",
@@ -637,7 +731,11 @@
       "status": "Applied",
       "stage": "Awaiting recruiter review",
       "updated": "2026-05-26",
-      "action": "No action"
+      "action": "No action",
+      "portal": "Dice",
+      "date": "2026-05-26",
+      "match": 88,
+      "postingUrl": "https://www.monster.com/jobs/2"
     },
     {
       "role": "AI/ML Engineer",
@@ -645,7 +743,11 @@
       "status": "Action Needed",
       "stage": "Resume tailoring requested",
       "updated": "2026-05-28",
-      "action": "Upload revised CV"
+      "action": "Upload revised CV",
+      "portal": "CareerBuilder",
+      "date": "2026-05-28",
+      "match": 90,
+      "postingUrl": "https://www.careerbuilder.com/jobs/3"
     },
     {
       "role": "Senior UI Engineer",
@@ -653,7 +755,23 @@
       "status": "Interview",
       "stage": "Manager discussion",
       "updated": "2026-05-25",
-      "action": "Research panel members"
+      "action": "Research panel members",
+      "portal": "LinkedIn",
+      "date": "2026-05-25",
+      "match": null,
+      "postingUrl": ""
+    },
+    {
+      "role": "Cloud Architect",
+      "company": "Blue Ridge Cloud",
+      "status": "Rejected",
+      "stage": "Position filled",
+      "updated": "2026-05-20",
+      "date": "2026-05-18",
+      "action": "Archive and move on",
+      "portal": "Dice",
+      "match": 68,
+      "postingUrl": "https://www.dice.com/jobs/cloud-architect"
     }
   ],
   "submission_months": [
@@ -725,5 +843,6 @@
       "month": "2026-05",
       "submissions": 47
     }
-  ]
+  ],
+  "tailored_resumes": {}
 }

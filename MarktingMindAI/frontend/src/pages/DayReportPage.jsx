@@ -15,7 +15,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { filterDayReportDashboard } from '../api/client'
-import { isDateRangeValid } from '../utils/validators'
+import { isDateRangeValid, validateDayReportFilters } from '../utils/validators'
 
 function extractNumeric(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -122,8 +122,9 @@ export function DayReportPage({ workspace }) {
   }
 
   const applyFilters = async () => {
-    if (!isDateRangeValid(draftStart, draftEnd)) {
-      setValidationMessage('Start date cannot be after end date.')
+    const validation = validateDayReportFilters({ start: draftStart, end: draftEnd })
+    if (!validation.isValid) {
+      setValidationMessage(Object.values(validation.errors).find(Boolean) ?? 'Invalid date range.')
       return
     }
 

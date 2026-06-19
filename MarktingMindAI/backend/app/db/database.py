@@ -1,13 +1,15 @@
 from contextlib import contextmanager
-from typing import Optional
+from typing import Generator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
 
 _engine: Optional[Engine] = None
+_SessionLocal: Optional[sessionmaker] = None
 
 
 def _normalize_database_url(database_url: str) -> str:
@@ -36,6 +38,32 @@ def get_engine() -> Optional[Engine]:
             connect_args=connect_args,
         )
     return _engine
+
+
+def get_session_factory() -> Optional[sessionmaker]:
+    global _SessionLocal
+    engine = get_engine()
+    if engine is None:
+        return None
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    return _SessionLocal
+
+
+@contextmanager
+def session_scope() -> Generator[Session, None, None]:
+    factory = get_session_factory()
+    if factory is None:
+        raise RuntimeError("DATABASE_URL is not configured.")
+    session = factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def init_sql_tables() -> None:

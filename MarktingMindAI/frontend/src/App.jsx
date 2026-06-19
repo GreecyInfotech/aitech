@@ -132,14 +132,17 @@ function App() {
   }, [])
 
   return (
-    <AppShell
+    <>
+      {!auth ? <AuthPanel onAuthenticated={handleAuthenticated} /> : null}
+
+      {auth ? (
+      <AppShell
       health={workspace?.health}
       onRefresh={refreshWorkspace}
       refreshing={refreshing}
       currentUser={auth?.user}
       onLogout={handleLogout}
     >
-      {!auth ? <AuthPanel onAuthenticated={handleAuthenticated} /> : null}
 
       {loading ? (
         <LoadingState
@@ -197,6 +200,8 @@ function App() {
         </Suspense>
       ) : null}
     </AppShell>
+      ) : null}
+    </>
   )
 }
 

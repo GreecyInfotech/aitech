@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
@@ -12,6 +13,17 @@ from app.services.test_data_store import (
     reset_test_data,
     save_test_data,
 )
+
+
+def _pg_backend():
+    from app.core.config import get_settings
+    from app.db.database import get_engine
+
+    if get_settings().use_seed_data or get_engine() is None:
+        return None
+    from app.services import pg_store
+
+    return pg_store
 
 
 def _data() -> Dict[str, Any]:
@@ -34,6 +46,9 @@ def _campaign_metrics() -> Dict[str, Union[int, float]]:
 
 
 def get_overview_payload() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_overview_payload()
     payload = _data()
     campaign_metrics = _campaign_metrics()
     submission_months = payload["submission_months"]
@@ -75,6 +90,9 @@ def get_overview_payload() -> dict:
 
 
 def get_campaign_workspace() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_campaign_workspace()
     payload = _data()
     return {
         "metrics": _campaign_metrics(),
@@ -112,12 +130,44 @@ def get_campaign_workspace() -> dict:
     }
 
 
+def _compute_application_stats(applications: List[dict], job_results: List[dict]) -> dict:
+    interviews = [item for item in applications if item["status"] == "Interview"]
+    action_needed = [item for item in applications if item["status"] == "Action Needed"]
+    match_values = [item["match"] for item in applications if item.get("match") is not None]
+    if match_values:
+        avg_match = round(sum(match_values) / len(match_values))
+    elif job_results:
+        avg_match = round(sum(job["match"] for job in job_results) / len(job_results))
+    else:
+        avg_match = 0
+    portal_counts: dict[str, int] = {}
+    for item in applications:
+        portal = item.get("portal") or "Direct"
+        portal_counts[portal] = portal_counts.get(portal, 0) + 1
+    best_platform = max(portal_counts, key=portal_counts.get) if portal_counts else "—"
+    response_rate = round((len(interviews) / len(applications)) * 100) if applications else 0
+    return {
+        "applied": len(applications),
+        "interviews": len(interviews),
+        "actionNeeded": len(action_needed),
+        "conversion": response_rate,
+        "responseRate": response_rate,
+        "avgMatchScore": avg_match,
+        "avgResponseTime": "3.2 days",
+        "bestPlatform": best_platform,
+    }
+
+
 def get_job_automation_workspace() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_job_automation_workspace()
     payload = _data()
     applications = payload["applications"]
     job_results = payload["job_results"]
     interviews = [item for item in applications if item["status"] == "Interview"]
     action_needed = [item for item in applications if item["status"] == "Action Needed"]
+    app_stats = _compute_application_stats(applications, job_results)
     return {
         "stats": {
             "appliedToday": 6,
@@ -149,17 +199,15 @@ def get_job_automation_workspace() -> dict:
             "all": applications,
             "interviews": interviews,
             "actionNeeded": action_needed,
-            "stats": {
-                "applied": len(applications),
-                "interviews": len(interviews),
-                "actionNeeded": len(action_needed),
-                "conversion": 50,
-            },
+            "stats": app_stats,
         },
     }
 
 
 def get_day_report_dashboard() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_day_report_dashboard()
     rows = _data()["day_report_rows"]
     totals = {
         "linkedin": sum(row["linkedin"] for row in rows),
@@ -176,6 +224,9 @@ def get_day_report_dashboard() -> dict:
 
 
 def get_submission_dashboard() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_submission_dashboard()
     months = _data()["submission_months"]
     lookup = {row["month"]: row["submissions"] for row in months}
     enriched = []
@@ -194,6 +245,9 @@ def get_submission_dashboard() -> dict:
 
 
 def preview_campaign(subject: str, body: str, recipients: List[str]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.preview_campaign(subject, body, recipients)
     return {
         "subject": subject,
         "body": body,
@@ -203,6 +257,9 @@ def preview_campaign(subject: str, body: str, recipients: List[str]) -> dict:
 
 
 def send_test_campaign(email: str, subject: str, body: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.send_test_campaign(email, subject, body)
     return {
         "success": True,
         "message": f"Test email queued to {email} with subject '{subject}'.",
@@ -210,6 +267,9 @@ def send_test_campaign(email: str, subject: str, body: str) -> dict:
 
 
 def launch_campaign(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.launch_campaign(payload)
     data = _data()
     recipients = payload.get("recipients", [])
     now_label = payload.get("scheduledFor") or datetime.utcnow().strftime("%Y-%m-%d %H:%M")
@@ -230,6 +290,9 @@ def launch_campaign(payload: dict) -> dict:
 
 
 def save_campaign_settings(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_campaign_settings(payload)
     data = _data()
     data["campaign_settings"].update(payload)
     save_test_data()
@@ -240,6 +303,9 @@ def save_campaign_settings(payload: dict) -> dict:
 
 
 def create_contact_list(name: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.create_contact_list(name)
     data = _data()
     new_list = {
         "name": name,
@@ -253,31 +319,281 @@ def create_contact_list(name: str) -> dict:
 
 
 def save_job_profile(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_job_profile(payload)
     data = _data()
     data["job_profile"].update(payload)
+    if payload.get("resumeSkills"):
+        data["job_profile"]["resumeSkills"] = payload["resumeSkills"]
+    if payload.get("jobTitles"):
+        data["search_config"]["titles"] = list(dict.fromkeys(payload["jobTitles"] + data["search_config"].get("titles", [])))
+        data["job_profile"]["jobTitles"] = payload["jobTitles"]
     save_test_data()
     return {
         "success": True,
         "message": "Job profile updated in test data.",
+        "profile": deepcopy(data["job_profile"]),
+        "search": deepcopy(data["search_config"]),
     }
 
 
-def run_job_search(payload: dict) -> dict:
+def save_automation_settings(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_automation_settings(payload)
     data = _data()
-    data["search_config"].update({key: value for key, value in payload.items() if value is not None})
-    titles = payload.get("titles") or []
-    filtered = []
-    for job in data["job_results"]:
-        if not titles or any(title.lower() in job["role"].lower() for title in titles):
-            filtered.append(job)
+    data["job_automation"].update(payload)
+    save_test_data()
     return {
         "success": True,
-        "message": f"Search completed with {len(filtered)} matching jobs.",
-        "results": filtered,
+        "message": "Automation settings saved.",
+        "automation": deepcopy(data["job_automation"]),
+    }
+
+
+def _employment_matches(job_type: str, employment_filter: str) -> bool:
+    if not employment_filter:
+        return True
+    lowered = employment_filter.lower()
+    if lowered in ("both", "both contract & full time", "any"):
+        return True
+    normalized = job_type.lower()
+    if "c2c" in lowered or lowered == "contract (c2c)":
+        return "c2c" in normalized or "contract" in normalized
+    if "w2" in lowered or lowered == "contract (w2)":
+        return "w2" in normalized or "contract" in normalized
+    if lowered in ("full-time", "full time"):
+        return "full" in normalized
+    if "c2h" in lowered or "contract to hire" in lowered:
+        return "c2h" in normalized or "hire" in normalized
+    if lowered == "contract":
+        return any(token in normalized for token in ("c2c", "contract", "c2h", "w2"))
+    return lowered in normalized
+
+
+def _years_to_experience_label(years: Optional[float]) -> Optional[str]:
+    if years is None:
+        return None
+    if years < 3:
+        return "1-2 Years"
+    if years < 5:
+        return "3-5 Years"
+    if years < 8:
+        return "5-8 Years"
+    if years < 12:
+        return "8-12 Years"
+    return "12+ Years"
+
+
+def save_search_config(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_search_config(payload)
+    data = _data()
+    allowed_keys = (
+        "titles",
+        "requiredSkills",
+        "optionalSkills",
+        "location",
+        "radius",
+        "filters",
+        "excludeKeywords",
+        "employmentType",
+        "minMatchScore",
+        "postedWithin",
+        "experienceLevel",
+        "rateMin",
+        "rateMax",
+        "repeatEvery",
+    )
+    for key in allowed_keys:
+        if key in payload and payload[key] is not None:
+            data["search_config"][key] = payload[key]
+    save_test_data()
+    return {
+        "success": True,
+        "message": "Search configuration saved.",
+        "search": deepcopy(data["search_config"]),
+    }
+
+
+def apply_parsed_resume(parsed: dict, filename: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.apply_parsed_resume(parsed, filename)
+    data = _data()
+    profile = data["job_profile"]
+    search = data["search_config"]
+
+    if parsed.get("fullName"):
+        profile["name"] = parsed["fullName"]
+    if parsed.get("email"):
+        profile["email"] = parsed["email"]
+    if parsed.get("phone"):
+        profile["phone"] = parsed["phone"]
+    if parsed.get("location"):
+        profile["location"] = parsed["location"]
+    experience_label = _years_to_experience_label(parsed.get("yearsExperience"))
+    if experience_label:
+        profile["experience"] = experience_label
+
+    skills = parsed.get("skills") or []
+    titles = parsed.get("jobTitles") or []
+    if skills:
+        profile["resumeSkills"] = list(dict.fromkeys(skills + profile.get("resumeSkills", [])))
+        search["requiredSkills"] = list(dict.fromkeys(skills + search.get("requiredSkills", [])))
+    if titles:
+        profile["jobTitles"] = list(dict.fromkeys(titles + profile.get("jobTitles", [])))
+        search["titles"] = list(dict.fromkeys(titles + search.get("titles", [])))
+
+    profile["resumeFileName"] = filename
+    profile["resumeSummary"] = parsed.get("summary") or profile.get("resumeSummary") or ""
+
+    save_test_data()
+    return {
+        "profile": deepcopy(profile),
+        "search": deepcopy(search),
+    }
+
+
+def _parse_rate_value(rate_label: str) -> Optional[int]:
+    if not rate_label:
+        return None
+    match = re.search(r"\d[\d,]*", str(rate_label))
+    if not match:
+        return None
+    return int(match.group(0).replace(",", ""))
+
+
+def _posted_within_days(posted_label: str) -> int:
+    numeric = re.search(r"\d+", str(posted_label))
+    return int(numeric.group(0)) if numeric else 999
+
+
+def _experience_matches(job: dict, experience_filter: str) -> bool:
+    if not experience_filter or experience_filter.lower() == "any":
+        return True
+    role = job.get("role", "").lower()
+    if "lead" in experience_filter.lower() or "principal" in experience_filter.lower():
+        return any(token in role for token in ("lead", "principal", "architect", "staff"))
+    if "senior" in experience_filter.lower():
+        return "senior" in role or "lead" in role
+    if "mid" in experience_filter.lower():
+        return any(token in role for token in ("developer", "engineer", "analyst"))
+    return True
+
+
+def run_job_search(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.run_job_search(payload)
+    data = _data()
+    data["search_config"].update({key: value for key, value in payload.items() if value is not None})
+    profile = data.get("job_profile", {})
+    portals = data.get("portal_items", [])
+    titles = payload.get("titles") or data["search_config"].get("titles") or profile.get("jobTitles") or []
+    required_skills = [skill.lower() for skill in payload.get("requiredSkills", data["search_config"].get("requiredSkills", []))]
+    optional_skills = [skill.lower() for skill in payload.get("optionalSkills", data["search_config"].get("optionalSkills", []))]
+    min_score = int(payload.get("minMatchScore", data["search_config"].get("minMatchScore", 70)))
+    employment_type = payload.get("employmentType", data["search_config"].get("employmentType", "Both"))
+    exclude_keywords = [kw.lower() for kw in payload.get("excludeKeywords", [])]
+    posted_within = int(payload.get("postedWithin") or data["search_config"].get("postedWithin") or 30)
+    experience_level = payload.get("experienceLevel") or data["search_config"].get("experienceLevel", "Any")
+    rate_min = _parse_rate_value(payload.get("rateMin") or data["search_config"].get("rateMin", ""))
+    rate_max = _parse_rate_value(payload.get("rateMax") or data["search_config"].get("rateMax", ""))
+
+    from app.services.portal_scraper import scrape_all_portal_jobs
+    from app.services.job_match_ai import enrich_and_rank_jobs
+
+    next_id = max((job.get("id", 0) for job in data["job_results"]), default=0) + 1
+    scraped_jobs, _ = scrape_all_portal_jobs(
+        portals,
+        titles=titles,
+        skills=profile.get("resumeSkills", []),
+        required_skills=required_skills,
+        location=payload.get("location") or data["search_config"].get("location") or profile.get("location", "Remote"),
+        existing_jobs=data["job_results"],
+        next_job_id=next_id,
+    )
+    if scraped_jobs:
+        data["job_results"].extend(scraped_jobs)
+
+    prefiltered = []
+
+    for job in data["job_results"]:
+        role_text = job["role"].lower()
+        if titles and not any(title.lower() in role_text for title in titles):
+            continue
+        if not _employment_matches(job.get("type", ""), employment_type):
+            continue
+        if _posted_within_days(job.get("posted", "999")) > posted_within:
+            continue
+        if not _experience_matches(job, experience_level):
+            continue
+        job_rate = _parse_rate_value(job.get("rate", ""))
+        if rate_min is not None and job_rate is not None and job_rate < rate_min:
+            continue
+        if rate_max is not None and job_rate is not None and job_rate > rate_max:
+            continue
+        job_blob = " ".join(
+            [
+                job["role"],
+                job["company"],
+                job["location"],
+                job.get("description", ""),
+                " ".join(job.get("skills", [])),
+            ]
+        ).lower()
+        if exclude_keywords and any(kw in job_blob for kw in exclude_keywords if kw):
+            continue
+        if required_skills and not any(skill in job_blob for skill in required_skills):
+            continue
+        if optional_skills and not any(skill in job_blob for skill in optional_skills):
+            if not required_skills:
+                continue
+        enriched = dict(job)
+        if not enriched.get("portalName") and portals:
+            portal = portals[job["id"] % len(portals)]
+            enriched["portalName"] = portal["name"]
+            enriched["portalUrl"] = portal["url"]
+            enriched["sourceUrl"] = enriched.get("sourceUrl") or f"{portal['url']}/jobs/{job['id']}"
+        prefiltered.append(enriched)
+
+    if not prefiltered and data["job_results"]:
+        prefiltered = [dict(job) for job in data["job_results"][:50]]
+
+    profile = data.get("job_profile", {})
+    ranked, matching_pipeline = enrich_and_rank_jobs(prefiltered, profile, data["search_config"])
+    filtered = [job for job in ranked if job.get("match", 0) >= min_score]
+    if not filtered and ranked:
+        filtered = ranked[: min(20, len(ranked))]
+        matching_pipeline = {
+            **matching_pipeline,
+            "message": (
+                f"{matching_pipeline.get('message', '')} "
+                f"Showing top {len(filtered)} embedding-ranked matches below {min_score}% threshold."
+            ).strip(),
+        }
+    ranked = filtered
+
+    save_test_data()
+    portal_names = ", ".join({p["name"] for p in portals}) if portals else "configured sources"
+    scrape_note = f" Scraped {len(scraped_jobs)} new posting(s) across {len(portals)} portal(s)." if portals else ""
+    return {
+        "success": True,
+        "message": f"Search completed across {portal_names} with {len(ranked)} matching jobs (min {min_score}%).{scrape_note} {matching_pipeline['message']}",
+        "results": ranked,
+        "scrapedCount": len(scraped_jobs),
+        "portalsScraped": len(portals),
+        "matchingPipeline": matching_pipeline,
     }
 
 
 def save_job(job_id: int) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_job(job_id)
     data = _data()
     saved = data.setdefault("saved_jobs", [])
     if job_id in saved:
@@ -290,22 +606,91 @@ def save_job(job_id: int) -> dict:
 
 
 def add_portal(name: str, url: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.add_portal(name, url)
     data = _data()
     portal = {"name": name, "url": url, "status": "Active"}
     data["portal_items"].append(portal)
     save_test_data()
-    return portal
+    return {"success": True, "message": f"Portal '{name}' added.", "portal": portal}
 
 
 def add_carrier(name: str, url: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.add_carrier(name, url)
     data = _data()
-    carrier = {"name": name, "url": url}
+    carrier = {"name": name, "url": url, "status": "Monitoring"}
     data["carrier_items"].append(carrier)
     save_test_data()
-    return carrier
+    return {"success": True, "message": f"Carrier '{name}' added.", "carrier": carrier}
+
+
+def delete_portal(name: str, url: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.delete_portal(name, url)
+    data = _data()
+    before = len(data["portal_items"])
+    data["portal_items"] = [p for p in data["portal_items"] if not (p["name"] == name and p["url"] == url)]
+    if len(data["portal_items"]) == before:
+        raise ValueError(f"Portal '{name}' not found.")
+    save_test_data()
+    return {"success": True, "message": f"Portal '{name}' removed."}
+
+
+def delete_carrier(name: str, url: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.delete_carrier(name, url)
+    data = _data()
+    before = len(data["carrier_items"])
+    data["carrier_items"] = [c for c in data["carrier_items"] if not (c["name"] == name and c["url"] == url)]
+    if len(data["carrier_items"]) == before:
+        raise ValueError(f"Carrier '{name}' not found.")
+    save_test_data()
+    return {"success": True, "message": f"Carrier '{name}' removed."}
+
+
+def import_portals(portals: List[dict]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.import_portals(portals)
+    data = _data()
+    added = 0
+    for item in portals:
+        portal = {"name": item["name"], "url": item["url"], "status": "Active"}
+        if not any(p["url"] == portal["url"] for p in data["portal_items"]):
+            data["portal_items"].append(portal)
+            added += 1
+    save_test_data()
+    return {"success": True, "message": f"Imported {added} portal(s).", "portals": deepcopy(data["portal_items"])}
+
+
+def import_carriers(carriers: List[dict]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.import_carriers(carriers)
+    data = _data()
+    added = 0
+    for item in carriers:
+        carrier = {
+            "name": item["name"],
+            "url": item["url"],
+            "status": item.get("status") or "Monitoring",
+        }
+        if not any(c["url"] == carrier["url"] for c in data["carrier_items"]):
+            data["carrier_items"].append(carrier)
+            added += 1
+    save_test_data()
+    return {"success": True, "message": f"Imported {added} carrier page(s).", "carriers": deepcopy(data["carrier_items"])}
 
 
 def apply_jobs(job_ids: List[int]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.apply_jobs(job_ids)
     data = _data()
     selected_jobs = [job for job in data["job_results"] if job["id"] in job_ids]
     for job in selected_jobs:
@@ -317,7 +702,11 @@ def apply_jobs(job_ids: List[int]) -> dict:
                 "status": "Applied",
                 "stage": "Application submitted from test endpoint",
                 "updated": date.today().isoformat(),
+                "date": date.today().isoformat(),
                 "action": "Await recruiter response",
+                "portal": job.get("portalName") or "Direct",
+                "match": job.get("match"),
+                "postingUrl": job.get("sourceUrl") or job.get("portalUrl") or "",
             },
         )
     save_test_data()
@@ -327,31 +716,333 @@ def apply_jobs(job_ids: List[int]) -> dict:
     }
 
 
-def analyze_job(job_id: int) -> dict:
-    jobs = _data()["job_results"]
-    selected = next((job for job in jobs if job["id"] == job_id), jobs[0])
-    cv_skills = ["Java", "Spring Boot", "Python", "React", "AWS", "Docker", "Maven", "Git", "Agile", "REST APIs", "TypeScript"]
-    job_skills = selected.get("skills", [])
-    hits = [s for s in job_skills if any(cv.lower() in s.lower() for cv in cv_skills)]
+def analyze_job(job_id: Optional[int] = None, job_description: Optional[str] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.analyze_job(job_id=job_id, job_description=job_description)
+    data = _data()
+    jobs = data["job_results"]
+    selected = next((job for job in jobs if job["id"] == job_id), jobs[0] if jobs else None) if job_id else None
+    cv_skills = data["job_profile"].get("resumeSkills") or ["Java", "Spring Boot", "Python", "React", "AWS", "Docker", "Maven", "Git", "Agile", "REST APIs", "TypeScript"]
+    description = (job_description or "").strip() or (selected.get("description") if selected else "") or ""
+    if not description and selected:
+        description = (
+            f"{selected['role']} at {selected['company']} in {selected['location']}. "
+            f"Required skills: {', '.join(selected.get('skills', []))}. "
+            f"Employment type: {selected.get('type', 'Contract')}."
+        )
+    if not description:
+        description = job_description or "General software engineering role requiring cloud and API experience."
+
+    job_skills = selected.get("skills", []) if selected else []
+    desc_lower = description.lower()
+    for skill in cv_skills:
+        if skill.lower() in desc_lower and skill not in job_skills:
+            job_skills.append(skill)
+
+    hits = [s for s in job_skills if s.lower() in desc_lower or any(s.lower() in cv.lower() for cv in cv_skills)]
     misses = [s for s in job_skills if s not in hits]
-    score = max(78, selected["match"] - 3)
+    extra_misses = [s for s in re_find_skills(description) if s not in hits and s not in misses]
+    misses = list(dict.fromkeys(misses + extra_misses))[:8]
+    score = max(55, min(98, round((len(hits) / max(len(job_skills), 1)) * 100))) if job_skills else 72
+    if selected:
+        score = max(score, selected.get("match", score) - 5)
+
+    skill_gaps = misses[:5]
+    recommendations = [
+        f"Add '{gap}' to your resume summary or skills section." for gap in skill_gaps[:3]
+    ] or [
+        "Promote the most recent relevant achievement to the profile summary.",
+        "Quantify delivery outcomes for the top listed project.",
+        "Mirror the target role terminology in the opening paragraph.",
+    ]
+
+    role_label = selected["role"] if selected else "Target role"
+    company_label = selected["company"] if selected else "the employer"
+
     return {
-        "selectedJobId": selected["id"],
+        "selectedJobId": selected["id"] if selected else None,
         "score": score,
-        "summary": f"Test analysis for {selected['role']} at {selected['company']}.",
-        "hits": hits if hits else selected["skills"][:2],
+        "summary": f"Analysis for {role_label} at {company_label}. Match score {score}% based on skills and description overlap.",
+        "hits": hits if hits else job_skills[:3],
         "misses": misses if misses else ["Leadership metrics", "Portfolio link"],
-        "suggestions": [
-            "Promote the most recent relevant achievement to the profile summary.",
-            "Quantify delivery outcomes for the top listed project.",
-            "Mirror the target role terminology in the opening paragraph.",
-        ],
-        "experienceMatch": f"Your experience aligns well with the requirements for {selected['role']}.",
-        "titleMatch": f"'{selected['role']}' directly matches your profile headline and resume title.",
+        "suggestions": recommendations,
+        "skillGaps": skill_gaps,
+        "recommendations": recommendations,
+        "experienceMatch": f"Your experience aligns with the requirements for {role_label}.",
+        "titleMatch": f"'{role_label}' aligns with your profile job titles.",
+        "jobDescription": description,
+        "tailoredScore": None,
+    }
+
+
+def re_find_skills(text: str) -> List[str]:
+    catalog = ["Java", "Python", "Spring Boot", "AWS", "Kubernetes", "React", "TypeScript", "SQL", "Docker", "Kafka", "GraphQL", "Microservices"]
+    lowered = text.lower()
+    return [skill for skill in catalog if skill.lower() in lowered]
+
+
+def tailor_resume_for_job(job_id: int, job_description: Optional[str] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.tailor_resume_for_job(job_id, job_description)
+    analysis = analyze_job(job_id=job_id, job_description=job_description)
+    data = _data()
+    selected = next((job for job in data["job_results"] if job["id"] == job_id), None)
+    profile = data["job_profile"]
+    boosted_score = min(98, analysis["score"] + 8 + len(analysis["hits"]))
+    tailored_content = (
+        f"{profile.get('name', 'Candidate')}\n"
+        f"{profile.get('email', '')} | {profile.get('phone', '')} | {profile.get('location', '')}\n\n"
+        f"PROFESSIONAL SUMMARY\n"
+        f"Tailored for {selected['role'] if selected else 'target role'} — emphasizing {', '.join(analysis['hits'][:5])}.\n\n"
+        f"KEY SKILLS\n{', '.join(analysis['hits'])}\n\n"
+        f"TARGET ALIGNMENT\n{analysis['summary']}\n\n"
+        f"RECOMMENDATIONS APPLIED\n- " + "\n- ".join(analysis["recommendations"][:3])
+    )
+    return {
+        "success": True,
+        "message": f"Resume tailored for job #{job_id}. Match score increased to {boosted_score}%.",
+        "content": tailored_content,
+        "tailoredScore": boosted_score,
+        "analysis": {**analysis, "tailoredScore": boosted_score},
+    }
+
+
+def save_tailored_resume(job_id: int, content: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_tailored_resume(job_id, content)
+    data = _data()
+    tailored = data.setdefault("tailored_resumes", {})
+    tailored[str(job_id)] = {"jobId": job_id, "content": content, "savedAt": datetime.utcnow().isoformat()}
+    save_test_data()
+    return {"success": True, "message": f"Tailored resume saved for job #{job_id}."}
+
+
+def get_tailored_resume(job_id: int) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_tailored_resume(job_id)
+    data = _data()
+    entry = data.get("tailored_resumes", {}).get(str(job_id))
+    if not entry:
+        return {"success": False, "message": "No tailored resume found for this job.", "content": None}
+    return {"success": True, "message": "Tailored resume loaded.", "content": entry["content"]}
+
+
+def run_auto_apply(match_threshold: Optional[int] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.run_auto_apply(match_threshold)
+    data = _data()
+    portals = data.get("portal_items", [])
+    if not portals:
+        return {
+            "success": False,
+            "message": "No portals configured. Add portals before running auto apply.",
+            "results": [],
+            "applied": 0,
+            "jobIds": [],
+            "scrapedCount": 0,
+            "portalsScraped": 0,
+        }
+
+    profile = data.get("job_profile", {})
+    search_config = data["search_config"]
+    threshold = match_threshold or data["job_automation"].get("matchThreshold", 70)
+    max_apps = data["job_automation"].get("maxApplications", 20)
+
+    from app.services.portal_scraper import scrape_all_portal_jobs
+    from app.services.job_match_ai import enrich_and_rank_jobs
+
+    next_id = max((job.get("id", 0) for job in data["job_results"]), default=0) + 1
+    scraped_jobs, _ = scrape_all_portal_jobs(
+        portals,
+        titles=search_config.get("titles") or profile.get("jobTitles") or ["Software Engineer"],
+        skills=profile.get("resumeSkills", []),
+        required_skills=search_config.get("requiredSkills", []),
+        location=search_config.get("location") or profile.get("location", "Remote"),
+        existing_jobs=data["job_results"],
+        next_job_id=next_id,
+    )
+    if scraped_jobs:
+        data["job_results"].extend(scraped_jobs)
+
+    titles = search_config.get("titles") or profile.get("jobTitles") or []
+    required_skills = [skill.lower() for skill in search_config.get("requiredSkills", [])]
+    optional_skills = [skill.lower() for skill in search_config.get("optionalSkills", [])]
+    employment_type = search_config.get("employmentType", "Both")
+    exclude_keywords = [kw.lower() for kw in search_config.get("excludeKeywords", [])]
+    posted_within = int(search_config.get("postedWithin") or 30)
+    experience_level = search_config.get("experienceLevel", "Any")
+    rate_min = _parse_rate_value(search_config.get("rateMin", ""))
+    rate_max = _parse_rate_value(search_config.get("rateMax", ""))
+
+    prefiltered = []
+    for job in data["job_results"]:
+        role_text = job["role"].lower()
+        if titles and not any(title.lower() in role_text for title in titles):
+            continue
+        if not _employment_matches(job.get("type", ""), employment_type):
+            continue
+        if _posted_within_days(job.get("posted", "999")) > posted_within:
+            continue
+        if not _experience_matches(job, experience_level):
+            continue
+        job_rate = _parse_rate_value(job.get("rate", ""))
+        if rate_min is not None and job_rate is not None and job_rate < rate_min:
+            continue
+        if rate_max is not None and job_rate is not None and job_rate > rate_max:
+            continue
+        job_blob = " ".join(
+            [
+                job["role"],
+                job["company"],
+                job["location"],
+                job.get("description", ""),
+                " ".join(job.get("skills", [])),
+            ]
+        ).lower()
+        if exclude_keywords and any(kw in job_blob for kw in exclude_keywords if kw):
+            continue
+        if required_skills and not any(skill in job_blob for skill in required_skills):
+            continue
+        if optional_skills and not any(skill in job_blob for skill in optional_skills):
+            if not required_skills:
+                continue
+        enriched = dict(job)
+        if not enriched.get("portalName") and portals:
+            portal = portals[job["id"] % len(portals)]
+            enriched["portalName"] = portal["name"]
+            enriched["portalUrl"] = portal["url"]
+            enriched["sourceUrl"] = enriched.get("sourceUrl") or f"{portal['url']}/jobs/{job['id']}"
+        prefiltered.append(enriched)
+
+    if not prefiltered and data["job_results"]:
+        prefiltered = [dict(job) for job in data["job_results"][:50]]
+
+    all_ranked, matching_pipeline = enrich_and_rank_jobs(prefiltered, profile, search_config)
+    ranked = [job for job in all_ranked if job.get("match", 0) >= threshold]
+    if not ranked and all_ranked:
+        ranked = all_ranked[: min(10, len(all_ranked))]
+    eligible = [job["id"] for job in ranked[:max_apps]]
+
+    if not eligible:
+        save_test_data()
+        portal_names = ", ".join({portal["name"] for portal in portals})
+        return {
+            "success": True,
+            "message": (
+                f"Scraped {len(scraped_jobs)} posting(s) across {len(portals)} portal(s) ({portal_names}). "
+                f"Found {len(ranked)} matches. {matching_pipeline['message']} "
+                f"No jobs met the {threshold}% threshold."
+            ),
+            "results": ranked,
+            "applied": 0,
+            "jobIds": [],
+            "scrapedCount": len(scraped_jobs),
+            "portalsScraped": len(portals),
+            "matchingPipeline": matching_pipeline,
+        }
+
+    result = apply_jobs(eligible)
+    save_test_data()
+    portal_names = ", ".join({portal["name"] for portal in portals})
+    return {
+        **result,
+        "message": (
+            f"Scraped {len(scraped_jobs)} posting(s) across {len(portals)} portal(s) ({portal_names}). "
+            f"Found {len(ranked)} matches. {matching_pipeline['message']} "
+            f"{result.get('message', f'Applied to {len(eligible)} job(s).')}"
+        ),
+        "results": ranked,
+        "applied": len(eligible),
+        "jobIds": eligible,
+        "scrapedCount": len(scraped_jobs),
+        "portalsScraped": len(portals),
+        "matchingPipeline": matching_pipeline,
+    }
+
+
+def search_linkedin_jobs(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.search_linkedin_jobs(payload)
+    rows = _data()["linkedin_jobs"]
+    query = payload.get("query", "").lower()
+    company = payload.get("company", "").lower()
+    experience = payload.get("experienceLevel", "all").lower()
+    employment = payload.get("employmentType", "all").lower()
+    under10 = payload.get("under10Applicants", False)
+    date_posted = payload.get("datePosted", "all").lower()
+    easy_only = payload.get("easyApplyOnly", False)
+
+    def posted_matches(label: str) -> bool:
+        if date_posted == "all":
+            return True
+        lowered = (label or "").lower()
+        if date_posted == "24h":
+            return "h ago" in lowered or "hour" in lowered
+        if date_posted == "week":
+            return "d ago" in lowered or "week" in lowered or "h ago" in lowered
+        return True
+
+    filtered = []
+    for row in rows:
+        haystack = f"{row['role']} {row['company']} {row['location']} {row.get('insight', '')}".lower()
+        if query and query not in haystack:
+            continue
+        if company and company not in row["company"].lower():
+            continue
+        if experience != "all" and row.get("experienceLevel", "").lower() != experience:
+            continue
+        if employment != "all":
+            row_type = (row.get("type") or "").lower().replace("-", " ")
+            employment_norm = employment.lower().replace("-", " ")
+            if employment_norm not in row_type and not (employment_norm == "full time" and "full" in row_type):
+                continue
+        if under10 and row.get("applicants", 99) >= 10:
+            continue
+        if easy_only and not row.get("easyApply"):
+            continue
+        if not posted_matches(row.get("posted") or row.get("datePosted", "")):
+            continue
+        filtered.append(row)
+
+    return {"success": True, "message": f"Found {len(filtered)} LinkedIn roles.", "results": filtered}
+
+
+def apply_linkedin_job(role: str, company: str, easy_apply: bool) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.apply_linkedin_job(role, company, easy_apply)
+    data = _data()
+    if easy_apply:
+        data["applications"].insert(
+            0,
+            {
+                "role": role,
+                "company": company,
+                "status": "Applied",
+                "stage": "LinkedIn Easy Apply submitted",
+                "updated": date.today().isoformat(),
+                "action": "Await recruiter response",
+            },
+        )
+        save_test_data()
+        return {"success": True, "message": f"Easy Apply submitted for {role} at {company}."}
+    return {
+        "success": True,
+        "message": f"Open LinkedIn to apply for {role} at {company}.",
+        "redirect": True,
     }
 
 
 def filter_day_report(start: Optional[str] = None, end: Optional[str] = None, recruiter: Optional[str] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.filter_day_report(start, end, recruiter)
     rows = []
     all_rows = _data()["day_report_rows"]
     for row in all_rows:
@@ -381,6 +1072,9 @@ def filter_day_report(start: Optional[str] = None, end: Optional[str] = None, re
 
 
 def filter_submissions(start_month: Optional[str] = None, end_month: Optional[str] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.filter_submissions(start_month, end_month)
     dashboard = get_submission_dashboard()
     months = []
     for month in dashboard["months"]:
@@ -399,6 +1093,9 @@ def filter_submissions(start_month: Optional[str] = None, end_month: Optional[st
 
 
 def get_test_data_payload() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_test_data_payload()
     snapshot = get_test_data_snapshot()
     counts = {}
     for key, value in snapshot.items():
@@ -412,6 +1109,9 @@ def get_test_data_payload() -> dict:
 
 
 def append_test_data_payload(dataset: str, entries: List[Dict[str, Any]]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.append_test_data_payload(dataset, entries)
     total = append_rows_to_dataset(dataset, entries)
     return {
         "success": True,
@@ -422,6 +1122,9 @@ def append_test_data_payload(dataset: str, entries: List[Dict[str, Any]]) -> dic
 
 
 def reset_test_data_payload() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.reset_test_data_payload()
     reset_test_data()
     return {
         "success": True,
@@ -476,6 +1179,9 @@ _LINKEDIN_SETTINGS = {
 
 
 def get_linkedin_workspace() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_linkedin_workspace()
     contacted = sum(1 for r in _LINKEDIN_RECRUITERS if r["status"] in ("contacted", "replied"))
     replied = sum(1 for r in _LINKEDIN_RECRUITERS if r["status"] == "replied")
 
@@ -517,6 +1223,9 @@ def get_linkedin_workspace() -> dict:
 
 
 def run_linkedin_discovery(companies: list, technologies: list, seniority: str, location: str, connections: str, results_per_company: int) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.run_linkedin_discovery(companies, technologies, seniority, location, connections, results_per_company)
     filtered = [
         r for r in _LINKEDIN_RECRUITERS
         if (not companies or r["company"] in companies)
@@ -533,6 +1242,9 @@ def run_linkedin_discovery(companies: list, technologies: list, seniority: str, 
 
 
 def enrich_linkedin_profiles(urls: list, tech_context: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.enrich_linkedin_profiles(urls, tech_context)
     names = ["Sarah Johnson", "Tom Mitchell", "Priya Kapoor", "Alex Wong", "Maria Silva"]
     companies = ["TEKsystems", "Infosys", "Capgemini", "Wipro", "Accenture"]
     techs_list = [["Java", "Spring Boot"], ["Java", "AWS", "Docker"], ["Java", "Microservices"], ["Spring", "SQL"], ["Java", "DevOps"]]
@@ -563,6 +1275,9 @@ def enrich_linkedin_profiles(urls: list, tech_context: str) -> dict:
 
 
 def send_linkedin_outreach(recruiter_ids: list, subject: str, body: str, channel: str, schedule_at: Optional[str]) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.send_linkedin_outreach(recruiter_ids, subject, body, channel, schedule_at)
     names = [r["name"] for r in _LINKEDIN_RECRUITERS if r["id"] in recruiter_ids]
     return {
         "success": True,
@@ -572,6 +1287,9 @@ def send_linkedin_outreach(recruiter_ids: list, subject: str, body: str, channel
 
 
 def generate_linkedin_message(prompt: str, message_type: str, tone: str, channel: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.generate_linkedin_message(prompt, message_type, tone, channel)
     subjects = {
         "connect": "Let us connect — Java Developer available C2C",
         "inmail": "Senior Java Developer available — C2C — Immediate start",
@@ -600,16 +1318,25 @@ def generate_linkedin_message(prompt: str, message_type: str, tone: str, channel
 
 
 def save_linkedin_settings(settings: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_linkedin_settings(settings)
     _LINKEDIN_SETTINGS.update(settings)
     return {"success": True, "message": "LinkedIn settings saved successfully."}
 
 
 def save_linkedin_api_keys(keys: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_linkedin_api_keys(keys)
     connected = [k for k, v in keys.items() if v and v.strip()]
     return {"success": True, "message": f"API keys saved for: {', '.join(connected) if connected else 'none'}."}
 
 
 def get_endpoint_catalog() -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.get_endpoint_catalog()
     return {
         "items": [
             {
@@ -910,18 +1637,18 @@ _USER_SETTINGS: Dict[str, Dict[str, Any]] = {
 
 
 def get_user_profile(user_id: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        from app.services import pg_auth
+
+        return pg_auth.get_user_profile(user_id)
     if user_id not in _USER_PROFILES:
-        # Auto-create a minimal profile for any newly registered user
-        from app.core.auth import _USERS_BY_EMAIL
-        auth_record = next(
-            (r for r in _USERS_BY_EMAIL.values() if r.id == user_id), None
-        )
         now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         _USER_PROFILES[user_id] = {
             "id": user_id,
-            "name": auth_record.name if auth_record else "User",
-            "email": auth_record.email if auth_record else "",
-            "role": auth_record.role if auth_record else "user",
+            "name": "User",
+            "email": "",
+            "role": "user",
             "phone": "",
             "company": "MarketingMind",
             "title": "",
@@ -936,6 +1663,12 @@ def get_user_profile(user_id: str) -> dict:
 
 
 def update_user_profile(user_id: str, updates: dict) -> None:
+    backend = _pg_backend()
+    if backend:
+        from app.services import pg_auth
+
+        pg_auth.update_user_profile(user_id, updates)
+        return
     if user_id not in _USER_PROFILES:
         # Auto-initialize profile before updating
         get_user_profile(user_id)
@@ -948,6 +1681,12 @@ def update_user_profile(user_id: str, updates: dict) -> None:
 
 
 def change_user_password(user_id: str, current_password: str, new_password: str, confirm_password: str) -> None:
+    backend = _pg_backend()
+    if backend:
+        from app.services import pg_auth
+
+        pg_auth.change_user_password(user_id, current_password, new_password, confirm_password)
+        return
     if new_password != confirm_password:
         raise ValueError("New passwords do not match.")
 
@@ -960,6 +1699,11 @@ def change_user_password(user_id: str, current_password: str, new_password: str,
 
 
 def get_user_settings(user_id: str) -> dict:
+    backend = _pg_backend()
+    if backend:
+        from app.services import pg_auth
+
+        return pg_auth.get_user_settings(user_id)
     if user_id not in _USER_SETTINGS:
         _USER_SETTINGS[user_id] = {
             "notifications": {
@@ -977,6 +1721,12 @@ def get_user_settings(user_id: str) -> dict:
 
 
 def update_user_settings(user_id: str, settings: dict) -> None:
+    backend = _pg_backend()
+    if backend:
+        from app.services import pg_auth
+
+        pg_auth.update_user_settings(user_id, settings)
+        return
     if user_id not in _USER_SETTINGS:
         _USER_SETTINGS[user_id] = settings
     else:

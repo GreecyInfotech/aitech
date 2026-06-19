@@ -28,29 +28,33 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Initialize databases on startup"""
-    print("🚀 Starting MarketingMind AI backend...")
+    print("Starting MarketingMind AI backend...")
 
-    # SQL database (SQLite by default; PostgreSQL when DATABASE_URL is overridden)
+    # SQL database (PostgreSQL by default)
     try:
         init_sql_tables()
-        print("✓ SQL database tables ready")
-    except Exception as e:
-        print(f"⚠ SQL database init failed: {e}")
+        print("[OK] SQL database tables ready")
+        from app.services.pg_auth import ensure_auth_ready
 
-    # MongoDB
-    try:
-        MongoDBConnection.connect()
-        init_collections()
-        print("✓ MongoDB initialized successfully")
+        ensure_auth_ready()
+        print("[OK] PostgreSQL auth/workspace seed verified")
     except Exception as e:
-        print(f"⚠ MongoDB connection failed: {e}")
-        print("⚠ Falling back to in-memory storage")
+        print(f"[WARN] SQL database init failed: {e}")
+
+    # MongoDB (optional)
+    if settings.use_mongodb:
+        try:
+            MongoDBConnection.connect()
+            init_collections()
+            print("[OK] MongoDB initialized successfully")
+        except Exception as e:
+            print(f"[WARN] MongoDB connection failed: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Close database connections on shutdown"""
-    print("⏹ Shutting down MarketingMind AI backend...")
+    print("Shutting down MarketingMind AI backend...")
     MongoDBConnection.close()
 
 

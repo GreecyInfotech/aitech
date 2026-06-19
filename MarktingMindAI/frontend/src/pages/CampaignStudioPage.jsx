@@ -22,7 +22,7 @@ import {
   saveCampaignSettings,
   sendCampaignTest,
 } from '../api/client'
-import { isEmail, isNonEmpty } from '../utils/validators'
+import { isEmail, isNonEmpty, pickFirstError, validateSmtpSettings } from '../utils/validators'
 
 const tabs = [
   { key: 'compose', label: 'Compose', icon: Mail },
@@ -599,18 +599,9 @@ export function CampaignStudioPage({ workspace, currentUser }) {
       return
     }
 
-    if (!isNonEmpty(settings.smtpHost, 3)) {
-      pushMessage('SMTP host is required.', 'error')
-      return
-    }
-
-    if (!Number.isFinite(settings.smtpPort) || settings.smtpPort < 1 || settings.smtpPort > 65535) {
-      pushMessage('SMTP port must be between 1 and 65535.', 'error')
-      return
-    }
-
-    if (!Number.isFinite(settings.senderLimit) || settings.senderLimit < 1) {
-      pushMessage('Daily send limit must be at least 1.', 'error')
+    const validation = validateSmtpSettings(settings)
+    if (!validation.isValid) {
+      pushMessage(pickFirstError(validation.errors), 'error')
       return
     }
 

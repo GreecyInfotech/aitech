@@ -1,0 +1,38 @@
+# Environment & secrets
+.env
+.env.local
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+backend/.venv/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Databases & local data
+*.db
+*.sqlite
+*.sqlite3
+marketingmind.db
+backend/marketingmind.db
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Build / cache
+.cache/
+.pytest_cache/
+coverage/
+htmlcov/

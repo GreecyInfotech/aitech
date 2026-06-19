@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -8,27 +9,59 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, UploadFile
 
+from app.core.config import get_settings
+from app.services.llm_client import invoke_llm, llm_available
+
 COMMON_SKILLS = {
     "python",
     "java",
-    "fastapi",
+    "javascript",
+    "typescript",
+    "spring boot",
     "spring",
     "sql",
     "postgresql",
+    "mysql",
+    "mongodb",
+    "fastapi",
+    "django",
+    "flask",
+    "react",
+    "angular",
+    "vue",
+    "node.js",
+    "node",
     "aws",
     "azure",
+    "gcp",
     "docker",
     "kubernetes",
+    "kafka",
+    "redis",
+    "graphql",
+    "rest",
+    "microservices",
+    "agile",
+    "scrum",
+    "git",
+    "jenkins",
+    "terraform",
+    "ansible",
+    "hadoop",
+    "spark",
+    "scala",
+    "go",
+    "golang",
+    "c#",
+    ".net",
+    "machine learning",
+    "deep learning",
     "llm",
     "langchain",
-    "machine learning",
-    "mlops",
     "pandas",
     "numpy",
-    "react",
-    "typescript",
-    "node",
-    "rest",
+    "tensorflow",
+    "pytorch",
 }
 
 EMAIL_REGEX = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -50,7 +83,63 @@ async def parse_resume_with_ai(
 
     parsed_profile = _rule_based_profile_parse(cleaned_text)
     ml_assessment = _ml_skill_assessment(cleaned_text, target_role, required_skills)
-    llm_assessment, agent_trace = _langchain_agent_assessment(cleaned_text, target_role, required_skills)
+
+    settings = get_settings()
+    include_llm = settings.resume_parse_include_llm or llm_available()
+    llm_budget = settings.resume_parse_llm_timeout_seconds + 2
+
+    if include_llm:
+        try:
+            llm_assessment, agent_trace = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _langchain_agent_assessment,
+                    cleaned_text,
+                    target_role,
+                    required_skills,
+                ),
+                timeout=llm_budget,
+            )
+        except asyncio.TimeoutError:
+            llm_assessment = {
+                "usedLangChain": False,
+                "provider": "ollama" if settings.use_local_llm else "none",
+                "model": settings.ollama_model if settings.use_local_llm else "none",
+                "status": "timeout",
+                "insights": (
+                    f"LLM reasoning timed out after {settings.resume_parse_llm_timeout_seconds}s. "
+                    "Structured parsing and ML skill scoring completed successfully."
+                ),
+            }
+            agent_trace = {
+                "used": False,
+                "mode": "timeout_fallback",
+                "steps": [
+                    "extract_text",
+                    "rule_based_profile_parse",
+                    "ml_skill_assessment",
+                    "llm_timeout_fallback",
+                ],
+            }
+    else:
+        llm_assessment = {
+            "usedLangChain": False,
+            "provider": "none",
+            "model": "none",
+            "status": "skipped",
+            "insights": (
+                "LLM reasoning skipped for fast parse. "
+                "Set RESUME_PARSE_INCLUDE_LLM=true in backend/.env when Ollama is ready."
+            ),
+        }
+        agent_trace = {
+            "used": False,
+            "mode": "llm_disabled",
+            "steps": [
+                "extract_text",
+                "rule_based_profile_parse",
+                "ml_skill_assessment",
+            ],
+        }
 
     preview = cleaned_text[:400]
 
@@ -99,6 +188,64 @@ def _normalize_text(text: str) -> str:
     return compact.strip()
 
 
+TITLE_HINTS = (
+    "developer",
+    "engineer",
+    "architect",
+    "analyst",
+    "consultant",
+    "manager",
+    "lead",
+    "administrator",
+)
+
+
+def _extract_skills_from_text(text: str) -> List[str]:
+    lowered = text.lower()
+    found: List[str] = []
+    # Match multi-word skills first (longer phrases take priority).
+    for skill in sorted(COMMON_SKILLS, key=len, reverse=True):
+        if skill in lowered and skill not in [item.lower() for item in found]:
+            label = " ".join(part.capitalize() if part != ".net" else ".NET" for part in skill.split())
+            if skill == "spring boot":
+                label = "Spring Boot"
+            elif skill == "node.js":
+                label = "Node.js"
+            elif skill == "c#":
+                label = "C#"
+            found.append(label)
+
+    skills_section = re.search(
+        r"(?:skills|technical skills|technologies|competencies)\s*[:\-]?\s*(.+?)(?:\n\n|\n[A-Z][a-z]+:|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if skills_section:
+        chunk = skills_section.group(1)
+        for token in re.split(r"[,;|•\n/]+", chunk):
+            cleaned = token.strip(" -•\t")
+            if 2 <= len(cleaned) <= 40 and cleaned.lower() not in {item.lower() for item in found}:
+                found.append(cleaned.title() if cleaned.islower() else cleaned)
+
+    return found[:30]
+
+
+def _extract_job_titles(text: str) -> List[str]:
+    titles = []
+    for line in text.splitlines():
+        cleaned = line.strip()
+        if not cleaned or len(cleaned) > 80:
+            continue
+        lowered = cleaned.lower()
+        if any(hint in lowered for hint in TITLE_HINTS):
+            formatted = " ".join(word.capitalize() for word in cleaned.split())
+            if formatted not in titles:
+                titles.append(formatted)
+        if len(titles) >= 6:
+            break
+    return titles
+
+
 def _rule_based_profile_parse(text: str) -> Dict[str, Any]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     full_name = lines[0] if lines else None
@@ -112,7 +259,8 @@ def _rule_based_profile_parse(text: str) -> Dict[str, Any]:
             location = line
             break
 
-    extracted_skills = sorted({skill for skill in COMMON_SKILLS if skill in text.lower()})
+    extracted_skills = _extract_skills_from_text(text)
+    job_titles = _extract_job_titles(text)
 
     years_experience = None
     exp_match = EXPERIENCE_REGEX.search(text)
@@ -130,6 +278,7 @@ def _rule_based_profile_parse(text: str) -> Dict[str, Any]:
         "phone": phone_match.group(0) if phone_match else None,
         "location": location,
         "skills": extracted_skills,
+        "jobTitles": job_titles,
         "yearsExperience": years_experience,
         "summary": summary,
     }
@@ -172,15 +321,37 @@ def _ml_skill_assessment(text: str, target_role: str, required_skills: List[str]
 
 
 def _langchain_agent_assessment(text: str, target_role: str, required_skills: List[str]) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    system_prompt = (
+        "You are a resume analysis assistant for staffing automation. "
+        "Extract skills, classify job-role fit, and identify gaps. "
+        "Return valid JSON with keys: insights, strengths, improvements, extractedSkills, roleClassification. "
+        "Keep each field concise."
+    )
+    user_prompt = (
+        f"Target role: {target_role}\n"
+        f"Required skills: {', '.join(required_skills)}\n"
+        f"Resume:\n{text[:12000]}\n"
+    )
+
+    raw_content, meta = invoke_llm(
+        system_prompt,
+        user_prompt,
+        timeout_seconds=get_settings().resume_parse_llm_timeout_seconds,
+        skip_if_unavailable=True,
+    )
+    if meta.get("status") != "ok" or not raw_content:
+        skip_message = meta.get("message") or (
+            "LLM reasoning skipped. Start Ollama (USE_LOCAL_LLM=true) "
+            "or set OPENAI_API_KEY in backend/.env."
+        )
+        status = "timeout" if "timed out" in skip_message.lower() else "fallback"
         return (
             {
                 "usedLangChain": False,
-                "provider": "none",
-                "model": "none",
-                "status": "fallback",
-                "insights": "LLM step skipped because OPENAI_API_KEY is not configured.",
+                "provider": meta.get("provider", "none"),
+                "model": meta.get("model") or "none",
+                "status": status,
+                "insights": skip_message,
             },
             {
                 "used": False,
@@ -194,71 +365,44 @@ def _langchain_agent_assessment(text: str, target_role: str, required_skills: Li
         )
 
     try:
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_openai import ChatOpenAI
-
-        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        llm = ChatOpenAI(model=model_name, temperature=0)
-
-        system_prompt = (
-            "You are a resume analysis assistant. Return valid JSON with keys: "
-            "insights, strengths, improvements. Keep each concise."
-        )
-        user_prompt = (
-            "Target role: {target_role}\n"
-            "Required skills: {required_skills}\n"
-            "Resume:\n{text}\n"
-        )
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                ("human", user_prompt),
-            ]
-        )
-
-        chain = prompt | llm
-        response = chain.invoke(
-            {
-                "target_role": target_role,
-                "required_skills": ", ".join(required_skills),
-                "text": text[:12000],
-            }
-        )
-
-        raw_content = response.content if hasattr(response, "content") else str(response)
         parsed = _safe_parse_json(raw_content)
 
         if parsed:
-            insights = parsed.get("insights") or "Structured analysis generated by LangChain."
+            insights = parsed.get("insights") or "Structured analysis generated by LLM reasoning layer."
             strengths = parsed.get("strengths") or []
             improvements = parsed.get("improvements") or []
+            extracted = parsed.get("extractedSkills") or []
+            role_class = parsed.get("roleClassification") or target_role
             insight_block = (
+                f"Role classification: {role_class}\n"
                 f"Insights: {insights}\n"
                 f"Strengths: {', '.join(strengths) if isinstance(strengths, list) else strengths}\n"
                 f"Improvements: {', '.join(improvements) if isinstance(improvements, list) else improvements}"
             )
+            if extracted:
+                insight_block += f"\nExtracted skills: {', '.join(extracted) if isinstance(extracted, list) else extracted}"
         else:
             insight_block = raw_content[:1200]
 
+        provider = meta.get("provider", "llm")
         return (
             {
                 "usedLangChain": True,
-                "provider": "openai",
-                "model": model_name,
+                "provider": provider,
+                "model": meta.get("model") or "unknown",
                 "status": "ok",
                 "insights": insight_block,
             },
             {
                 "used": True,
-                "mode": "langchain_chain",
+                "mode": f"{provider}_reasoning",
                 "steps": [
                     "extract_text",
                     "rule_based_profile_parse",
                     "ml_skill_assessment",
-                    "langchain_prompt_build",
-                    "langchain_llm_invoke",
-                    "agent_summary_finalize",
+                    "llm_skill_extraction",
+                    "llm_role_classification",
+                    "llm_gap_analysis",
                 ],
             },
         )
@@ -266,10 +410,10 @@ def _langchain_agent_assessment(text: str, target_role: str, required_skills: Li
         return (
             {
                 "usedLangChain": False,
-                "provider": "openai",
-                "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                "provider": meta.get("provider", "llm"),
+                "model": meta.get("model") or "unknown",
                 "status": "error",
-                "insights": f"LangChain invocation failed: {str(exc)}",
+                "insights": f"LLM reasoning failed: {str(exc)}",
             },
             {
                 "used": False,
@@ -278,7 +422,7 @@ def _langchain_agent_assessment(text: str, target_role: str, required_skills: Li
                     "extract_text",
                     "rule_based_profile_parse",
                     "ml_skill_assessment",
-                    "langchain_error_fallback",
+                    "llm_error_fallback",
                 ],
             },
         )

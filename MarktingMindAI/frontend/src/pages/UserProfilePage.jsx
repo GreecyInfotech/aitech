@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Bell, Lock, LogOut, Mail, MapPin, Phone, Save, Smartphone } from 'lucide-react'
+import {
+  Bell,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Lock,
+  LogOut,
+  Mail,
+  MapPin,
+  Phone,
+  Save,
+  Shield,
+  Smartphone,
+  User,
+} from 'lucide-react'
 
 import {
   changeUserPassword,
@@ -9,6 +23,7 @@ import {
   updateUserSettings,
   logoutUser,
 } from '../api/client'
+import { pickFirstError, validatePasswordChangeForm, validateUserProfileForm } from '../utils/validators'
 
 const tabs = [
   { key: 'profile', label: 'Profile', icon: Mail },
@@ -24,6 +39,7 @@ export function UserProfilePage({ currentUser, onLogout }) {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState({ tone: 'success', text: '' })
   const [busy, setBusy] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({})
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -105,6 +121,13 @@ export function UserProfilePage({ currentUser, onLogout }) {
   }
 
   const saveProfile = async () => {
+    const validation = validateUserProfileForm(profileForm)
+    setFieldErrors(validation.errors)
+    if (!validation.isValid) {
+      pushMessage(pickFirstError(validation.errors), 'error')
+      return
+    }
+
     setBusy(true)
     try {
       await updateUserProfile(profileForm)
@@ -117,13 +140,10 @@ export function UserProfilePage({ currentUser, onLogout }) {
   }
 
   const savePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      pushMessage('New passwords do not match.', 'error')
-      return
-    }
-
-    if (passwordForm.newPassword.length < 6) {
-      pushMessage('Password must be at least 6 characters.', 'error')
+    const validation = validatePasswordChangeForm(passwordForm)
+    setFieldErrors(validation.errors)
+    if (!validation.isValid) {
+      pushMessage(pickFirstError(validation.errors), 'error')
       return
     }
 
@@ -131,6 +151,7 @@ export function UserProfilePage({ currentUser, onLogout }) {
     try {
       await changeUserPassword(passwordForm)
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
+      setFieldErrors({})
       pushMessage('Password changed successfully.')
     } catch {
       pushMessage('Failed to change password.', 'error')
@@ -163,13 +184,16 @@ export function UserProfilePage({ currentUser, onLogout }) {
     }
   }
 
+  const initials = profile?.name?.split(' ').map((n) => n[0]).join('') ?? 'U'
+  const roleLabel = profile?.role?.replaceAll('_', ' ') ?? 'User'
+
   if (loading) {
     return (
-      <div className="page-stack">
-        <section className="hero-panel compact">
+      <div className="page-stack profile-dashboard-page">
+        <section className="hero-panel">
           <div>
-            <p className="eyebrow">Loading Profile</p>
-            <h3>Retrieving your profile data...</h3>
+            <p className="eyebrow">Loading profile</p>
+            <h3>Retrieving your account dashboard...</h3>
           </div>
         </section>
       </div>
@@ -177,45 +201,98 @@ export function UserProfilePage({ currentUser, onLogout }) {
   }
 
   return (
-    <div className="page-stack">
-      <section className="hero-panel compact">
+    <div className="page-stack profile-dashboard-page">
+      <section className="hero-panel">
         <div>
-          <div className="profile-header">
-            <div className="profile-avatar-large">{profile?.name?.split(' ').map(n => n[0]).join('')}</div>
-            <div>
-              <h3>{profile?.name}</h3>
-              <p className="eyebrow">{profile?.role?.replace('_', ' ').toUpperCase()}</p>
-              <p className="hero-copy">{profile?.title} at {profile?.company}</p>
-            </div>
-          </div>
+          <p className="eyebrow">Account dashboard</p>
+          <h3>My Profile & workspace preferences</h3>
+          <p className="hero-copy">
+            Manage your identity, security, notifications, and application settings from one place.
+          </p>
         </div>
-        <div className="stat-row two-up">
-          <article className="metric-card"><span>Account Status</span><strong>Active</strong></article>
-          <article className="metric-card"><span>Last Login</span><strong>{profile?.lastLogin ? new Date(profile.lastLogin).toLocaleDateString() : 'Never'}</strong></article>
+        <div className="hero-grid four-up">
+          <div className="metric-tile accent-cobalt">
+            <Shield size={18} />
+            <strong className="metric-text">{roleLabel}</strong>
+            <span>Access role</span>
+          </div>
+          <div className="metric-tile accent-teal">
+            <CheckCircle2 size={18} />
+            <strong>Active</strong>
+            <span>Account status</span>
+          </div>
+          <div className="metric-tile accent-amber">
+            <Calendar size={18} />
+            <strong className="metric-text">
+              {profile?.lastLogin ? new Date(profile.lastLogin).toLocaleDateString() : '—'}
+            </strong>
+            <span>Last login</span>
+          </div>
+          <div className="metric-tile accent-amber">
+            <Bell size={18} />
+            <strong>{Object.values(notificationsForm).filter(Boolean).length}/5</strong>
+            <span>Alerts enabled</span>
+          </div>
         </div>
       </section>
 
       {message.text ? <div className={`banner ${message.tone}`}>{message.text}</div> : null}
 
-      <div className="tab-strip wrap-tabs">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              className={`tab-button${activeTab === tab.key ? ' active' : ''}`}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              <Icon size={15} />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      <section className="profile-dashboard-layout">
+        <aside className="profile-dashboard-sidebar glass-card">
+          <div className="profile-sidebar-identity">
+            <div className="profile-avatar-large">{initials}</div>
+            <div>
+              <h4>{profile?.name}</h4>
+              <p className="profile-sidebar-email">{profile?.email}</p>
+              <span className="status-pill available">{roleLabel}</span>
+            </div>
+          </div>
 
+          <div className="profile-sidebar-meta">
+            <div className="profile-meta-row">
+              <Building2 size={15} />
+              <span>{profileForm.company || '—'}</span>
+            </div>
+            <div className="profile-meta-row">
+              <User size={15} />
+              <span>{profileForm.title || '—'}</span>
+            </div>
+            <div className="profile-meta-row">
+              <MapPin size={15} />
+              <span>{profileForm.location || '—'}</span>
+            </div>
+            <div className="profile-meta-row">
+              <Phone size={15} />
+              <span>{profileForm.phone || '—'}</span>
+            </div>
+          </div>
+
+          <nav className="profile-sidebar-nav" aria-label="Profile sections">
+            {tabs.map((tab) => {
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`profile-nav-item${activeTab === tab.key ? ' active' : ''}`}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  <Icon size={16} />
+                  <span>{tab.label}</span>
+                </button>
+              )
+            })}
+          </nav>
+
+          <button type="button" className="secondary-button profile-sidebar-logout" onClick={handleLogout}>
+            <LogOut size={16} />
+            Logout
+          </button>
+        </aside>
+
+        <div className="profile-dashboard-main">
       {activeTab === 'profile' ? (
-        <section className="page-stack dense">
           <article className="glass-card">
             <div className="section-heading">
               <div>
@@ -225,19 +302,32 @@ export function UserProfilePage({ currentUser, onLogout }) {
             </div>
 
             <div className="form-grid two-columns">
-              <label>Full Name<input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} /></label>
-              <label>Email<input value={profile?.email} disabled /></label>
-              <label>Phone<input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} /></label>
-              <label>Company<input value={profileForm.company} onChange={(e) => setProfileForm({ ...profileForm, company: e.target.value })} /></label>
-              <label>Title<input value={profileForm.title} onChange={(e) => setProfileForm({ ...profileForm, title: e.target.value })} /></label>
-              <label>Department<input value={profileForm.department} onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })} /></label>
-              <label>Location<input value={profileForm.location} onChange={(e) => setProfileForm({ ...profileForm, location: e.target.value })} /></label>
-              <label>Timezone<input value={profileForm.timezone} onChange={(e) => setProfileForm({ ...profileForm, timezone: e.target.value })} /></label>
+              <label className={fieldErrors.name ? 'form-field has-error' : 'form-field'}>
+                Full Name
+                <input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} />
+                {fieldErrors.name ? <span className="field-error">{fieldErrors.name}</span> : null}
+              </label>
+              <label className="form-field">Email<input value={profile?.email} disabled /></label>
+              <label className={fieldErrors.phone ? 'form-field has-error' : 'form-field'}>
+                Phone
+                <input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} />
+                {fieldErrors.phone ? <span className="field-error">{fieldErrors.phone}</span> : null}
+              </label>
+              <label className="form-field">Company<input value={profileForm.company} onChange={(e) => setProfileForm({ ...profileForm, company: e.target.value })} /></label>
+              <label className="form-field">Title<input value={profileForm.title} onChange={(e) => setProfileForm({ ...profileForm, title: e.target.value })} /></label>
+              <label className="form-field">Department<input value={profileForm.department} onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })} /></label>
+              <label className={fieldErrors.location ? 'form-field has-error' : 'form-field'}>
+                Location
+                <input value={profileForm.location} onChange={(e) => setProfileForm({ ...profileForm, location: e.target.value })} />
+                {fieldErrors.location ? <span className="field-error">{fieldErrors.location}</span> : null}
+              </label>
+              <label className="form-field">Timezone<input value={profileForm.timezone} onChange={(e) => setProfileForm({ ...profileForm, timezone: e.target.value })} /></label>
             </div>
 
-            <label>
+            <label className={fieldErrors.bio ? 'form-field has-error' : 'form-field'}>
               Bio
               <textarea value={profileForm.bio} onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })} placeholder="Tell us about yourself" rows={4} />
+              {fieldErrors.bio ? <span className="field-error">{fieldErrors.bio}</span> : null}
             </label>
 
             <div className="button-row">
@@ -247,11 +337,9 @@ export function UserProfilePage({ currentUser, onLogout }) {
               </button>
             </div>
           </article>
-        </section>
       ) : null}
 
       {activeTab === 'settings' ? (
-        <section className="page-stack dense">
           <article className="glass-card">
             <div className="section-heading">
               <div>
@@ -294,11 +382,9 @@ export function UserProfilePage({ currentUser, onLogout }) {
               </button>
             </div>
           </article>
-        </section>
       ) : null}
 
       {activeTab === 'notifications' ? (
-        <section className="page-stack dense">
           <article className="glass-card">
             <div className="section-heading">
               <div>
@@ -376,11 +462,10 @@ export function UserProfilePage({ currentUser, onLogout }) {
               </button>
             </div>
           </article>
-        </section>
       ) : null}
 
       {activeTab === 'password' ? (
-        <section className="page-stack dense">
+        <>
           <article className="glass-card">
             <div className="section-heading">
               <div>
@@ -390,29 +475,32 @@ export function UserProfilePage({ currentUser, onLogout }) {
             </div>
 
             <div className="form-grid">
-              <label>
+              <label className={fieldErrors.currentPassword ? 'form-field has-error' : 'form-field'}>
                 Current Password
                 <input
                   type="password"
                   value={passwordForm.currentPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
                 />
+                {fieldErrors.currentPassword ? <span className="field-error">{fieldErrors.currentPassword}</span> : null}
               </label>
-              <label>
+              <label className={fieldErrors.newPassword ? 'form-field has-error' : 'form-field'}>
                 New Password
                 <input
                   type="password"
                   value={passwordForm.newPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                 />
+                {fieldErrors.newPassword ? <span className="field-error">{fieldErrors.newPassword}</span> : null}
               </label>
-              <label>
+              <label className={fieldErrors.confirmPassword ? 'form-field has-error' : 'form-field'}>
                 Confirm Password
                 <input
                   type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                 />
+                {fieldErrors.confirmPassword ? <span className="field-error">{fieldErrors.confirmPassword}</span> : null}
               </label>
             </div>
 
@@ -443,8 +531,10 @@ export function UserProfilePage({ currentUser, onLogout }) {
               </button>
             </div>
           </article>
-        </section>
+        </>
       ) : null}
+        </div>
+      </section>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import axios from 'axios'
 
 const AUTH_TOKEN_KEY = 'mm_auth_token'
 const AUTH_USER_KEY = 'mm_auth_user'
+const LONG_RUNNING_TIMEOUT_MS = 180000
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
@@ -20,8 +21,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Surface a clear message from FastAPI validation errors
-    if (error?.response?.data?.detail) {
+    if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+      error.message = 'Request timed out. Heavy AI steps (Ollama, embeddings) can take 1–3 minutes on first run — retry or set EMBEDDING_BACKEND=sklearn_tfidf in backend/.env for faster matching.'
+    } else if (error?.response?.data?.detail) {
       const detail = error.response.data.detail
       if (typeof detail === 'string') {
         error.message = detail
@@ -148,8 +150,32 @@ export async function saveJobProfile(profile) {
   return response.data
 }
 
+export async function saveAutomationSettings(settings) {
+  const response = await api.put('/api/job-automation/automation', settings)
+  return response.data
+}
+
+export async function parseResumeFile(file, targetRole = 'Software Engineer', requiredSkills = 'Python, FastAPI, SQL') {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('targetRole', targetRole)
+  formData.append('requiredSkills', requiredSkills)
+  const response = await api.post('/api/job-automation/resume/parse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
+  return response.data
+}
+
+export async function saveSearchConfig(searchPayload) {
+  const response = await api.put('/api/job-automation/search', searchPayload)
+  return response.data
+}
+
 export async function runJobSearch(searchPayload) {
-  const response = await api.post('/api/job-automation/search/run', searchPayload)
+  const response = await api.post('/api/job-automation/search/run', searchPayload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
@@ -158,8 +184,28 @@ export async function addPortalItem(portalPayload) {
   return response.data
 }
 
+export async function deletePortalItem(portalPayload) {
+  const response = await api.delete('/api/job-automation/portals', { data: portalPayload })
+  return response.data
+}
+
+export async function importPortalItems(portals) {
+  const response = await api.post('/api/job-automation/portals/import', { portals })
+  return response.data
+}
+
 export async function addCarrierItem(carrierPayload) {
   const response = await api.post('/api/job-automation/carriers', carrierPayload)
+  return response.data
+}
+
+export async function deleteCarrierItem(carrierPayload) {
+  const response = await api.delete('/api/job-automation/carriers', { data: carrierPayload })
+  return response.data
+}
+
+export async function importCarrierItems(carriers) {
+  const response = await api.post('/api/job-automation/carriers/import', { carriers })
   return response.data
 }
 
@@ -168,13 +214,49 @@ export async function applyToJobs(jobIds) {
   return response.data
 }
 
-export async function analyzeJob(jobId) {
-  const response = await api.post('/api/job-automation/analyze', { jobId })
+export async function runAutoApply(matchThreshold) {
+  const response = await api.post('/api/job-automation/auto-apply', { matchThreshold }, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
+  return response.data
+}
+
+export async function analyzeJob(payload) {
+  const response = await api.post('/api/job-automation/analyze', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
 export async function saveJobItem(jobId) {
   const response = await api.post('/api/job-automation/save', { jobId })
+  return response.data
+}
+
+export async function tailorResumeForJob(jobId, jobDescription) {
+  const response = await api.post('/api/job-automation/resume/tailor', { jobId, jobDescription }, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
+  return response.data
+}
+
+export async function saveTailoredResume(jobId, content) {
+  const response = await api.post('/api/job-automation/resume/save-tailored', { jobId, content })
+  return response.data
+}
+
+export async function getTailoredResume(jobId) {
+  const response = await api.get(`/api/job-automation/resume/tailored/${jobId}`)
+  return response.data
+}
+
+export async function searchLinkedInJobs(filters) {
+  const response = await api.post('/api/job-automation/linkedin/search', filters)
+  return response.data
+}
+
+export async function applyLinkedInJob(payload) {
+  const response = await api.post('/api/job-automation/linkedin/apply', payload)
   return response.data
 }
 

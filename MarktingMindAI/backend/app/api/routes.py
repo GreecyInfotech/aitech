@@ -18,6 +18,14 @@ from app.schemas.api_models import (
     AddCarrierRequest,
     AddPortalRequest,
     AnalyzeJobRequest,
+    AutoApplyRequest,
+    DeleteCarrierRequest,
+    DeletePortalRequest,
+    ImportCarriersRequest,
+    ImportPortalsRequest,
+    LinkedInJobSearchRequest,
+    SaveTailoredResumeRequest,
+    TailorResumeRequest,
     AnalysisResult,
     ApplyJobsRequest,
     SaveJobRequest,
@@ -37,6 +45,7 @@ from app.schemas.api_models import (
     EndpointCatalogResponse,
     HealthResponse,
     JobAutomationWorkspaceResponse,
+    JobAutomationSettings,
     JobProfile,
     LinkedInApiKeysRequest,
     LinkedInDiscoverRequest,
@@ -54,6 +63,7 @@ from app.schemas.api_models import (
     PortalItem,
     RegisterRequest,
     ResumeParseResponse,
+    SearchConfigSaveRequest,
     SearchRunRequest,
     SubmissionDashboardResponse,
     SubmissionFilterRequest,
@@ -74,7 +84,10 @@ from app.services.seed_data import (
     add_portal,
     analyze_job,
     apply_jobs,
+    apply_linkedin_job,
     create_contact_list,
+    delete_carrier,
+    delete_portal,
     enrich_linkedin_profiles,
     filter_day_report,
     filter_submissions,
@@ -86,20 +99,30 @@ from app.services.seed_data import (
     get_linkedin_workspace,
     get_overview_payload,
     get_submission_dashboard,
+    get_tailored_resume,
     get_test_data_payload,
+    import_carriers,
+    import_portals,
     launch_campaign,
     append_test_data_payload,
     preview_campaign,
     reset_test_data_payload,
+    run_auto_apply,
     run_job_search,
     run_linkedin_discovery,
+    save_automation_settings,
     save_campaign_settings,
     save_job,
     save_job_profile,
+    save_search_config,
+    apply_parsed_resume,
     save_linkedin_api_keys,
     save_linkedin_settings,
+    save_tailored_resume,
+    search_linkedin_jobs,
     send_linkedin_outreach,
     send_test_campaign,
+    tailor_resume_for_job,
 )
 
 router = APIRouter()
@@ -249,19 +272,55 @@ def save_job_profile_payload(payload: JobProfile) -> dict:
     return save_job_profile(payload.model_dump())
 
 
+@router.put("/api/job-automation/automation", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def save_automation_payload(payload: JobAutomationSettings) -> dict:
+    return save_automation_settings(payload.model_dump())
+
+
+@router.put("/api/job-automation/search", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def save_search_config_payload(payload: SearchConfigSaveRequest) -> dict:
+    return save_search_config(payload.model_dump())
+
+
 @router.post("/api/job-automation/search/run", dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def run_job_search_payload(payload: SearchRunRequest) -> dict:
     return run_job_search(payload.model_dump())
 
 
-@router.post("/api/job-automation/portals", response_model=PortalItem, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+@router.post("/api/job-automation/portals", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def add_portal_payload(payload: AddPortalRequest) -> dict:
     return add_portal(payload.name, payload.url)
 
 
-@router.post("/api/job-automation/carriers", response_model=CarrierItem, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+@router.delete("/api/job-automation/portals", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def delete_portal_payload(payload: DeletePortalRequest) -> dict:
+    try:
+        return delete_portal(payload.name, payload.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/api/job-automation/portals/import", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def import_portals_payload(payload: ImportPortalsRequest) -> dict:
+    return import_portals([item.model_dump() for item in payload.portals])
+
+
+@router.post("/api/job-automation/carriers", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def add_carrier_payload(payload: AddCarrierRequest) -> dict:
     return add_carrier(payload.name, payload.url)
+
+
+@router.delete("/api/job-automation/carriers", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def delete_carrier_payload(payload: DeleteCarrierRequest) -> dict:
+    try:
+        return delete_carrier(payload.name, payload.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/api/job-automation/carriers/import", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def import_carriers_payload(payload: ImportCarriersRequest) -> dict:
+    return import_carriers([item.model_dump() for item in payload.carriers])
 
 
 @router.post("/api/job-automation/apply", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
@@ -269,9 +328,41 @@ def apply_jobs_payload(payload: ApplyJobsRequest) -> dict:
     return apply_jobs(payload.jobIds)
 
 
+@router.post("/api/job-automation/auto-apply", dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def auto_apply_payload(payload: AutoApplyRequest) -> dict:
+    return run_auto_apply(payload.matchThreshold)
+
+
 @router.post("/api/job-automation/analyze", response_model=AnalysisResult, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def analyze_job_payload(payload: AnalyzeJobRequest) -> dict:
-    return analyze_job(payload.jobId)
+    if not payload.jobId and not payload.jobDescription:
+        raise HTTPException(status_code=400, detail="Provide jobId or jobDescription.")
+    return analyze_job(job_id=payload.jobId, job_description=payload.jobDescription)
+
+
+@router.post("/api/job-automation/resume/tailor", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def tailor_resume_payload(payload: TailorResumeRequest) -> dict:
+    return tailor_resume_for_job(payload.jobId, payload.jobDescription)
+
+
+@router.post("/api/job-automation/resume/save-tailored", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def save_tailored_resume_payload(payload: SaveTailoredResumeRequest) -> dict:
+    return save_tailored_resume(payload.jobId, payload.content)
+
+
+@router.get("/api/job-automation/resume/tailored/{job_id}", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def get_tailored_resume_payload(job_id: int) -> dict:
+    return get_tailored_resume(job_id)
+
+
+@router.post("/api/job-automation/linkedin/search", dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def linkedin_job_search_payload(payload: LinkedInJobSearchRequest) -> dict:
+    return search_linkedin_jobs(payload.model_dump())
+
+
+@router.post("/api/job-automation/linkedin/apply", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def linkedin_apply_payload(payload: dict) -> dict:
+    return apply_linkedin_job(payload.get("role", ""), payload.get("company", ""), bool(payload.get("easyApply")))
 
 
 @router.post("/api/job-automation/save", response_model=SaveJobResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
@@ -286,8 +377,9 @@ def save_job_payload(payload: SaveJobRequest) -> dict:
     summary="Upload and parse resume with AI",
     description=(
         "Accepts TXT, PDF, or DOCX resume files and returns structured profile extraction, "
-        "ML role-fit scoring, and optional LangChain/OpenAI insights. "
-        "When OPENAI_API_KEY is not configured, the endpoint falls back to deterministic parsing and ML scoring."
+        "ML role-fit scoring, embedding-ready profile extraction, and optional LLM reasoning "
+        "(Ollama when USE_LOCAL_LLM=true, else OpenAI). "
+        "Falls back to deterministic parsing when no LLM provider is available."
     ),
     response_description="Parsed resume profile with ML and LLM assessments.",
     dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))],
@@ -328,7 +420,12 @@ async def parse_resume_payload(
     requiredSkills: str = Form("Python, FastAPI, SQL"),
 ) -> dict:
     required_skills = [skill.strip() for skill in requiredSkills.split(",") if skill.strip()]
-    return await parse_resume_with_ai(file=file, target_role=targetRole, required_skills=required_skills)
+    result = await parse_resume_with_ai(file=file, target_role=targetRole, required_skills=required_skills)
+    workspace = apply_parsed_resume(result.get("parsedProfile", {}), file.filename or "resume.txt")
+    result["profile"] = workspace["profile"]
+    result["search"] = workspace["search"]
+    result["message"] = "Resume parsed and profile/search configuration updated."
+    return result
 
 
 @router.get("/api/day-report/dashboard", response_model=DayReportDashboardResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])

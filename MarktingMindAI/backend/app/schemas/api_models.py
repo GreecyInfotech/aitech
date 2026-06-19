@@ -174,6 +174,10 @@ class JobProfile(BaseModel):
     rate: str = Field(min_length=1, max_length=60)
     visa: str = Field(min_length=1, max_length=40)
     workMode: str = Field(min_length=2, max_length=60)
+    jobTitles: List[str] = Field(default_factory=list)
+    resumeFileName: Optional[str] = None
+    resumeSummary: Optional[str] = None
+    resumeSkills: List[str] = Field(default_factory=list)
 
 
 class JobAutomationSettings(BaseModel):
@@ -184,6 +188,8 @@ class JobAutomationSettings(BaseModel):
     tailorCv: bool
     scheduleEnabled: bool
     scheduleLabel: str
+    scheduleTimezone: str = "America/New_York"
+    scheduleTime: str = "09:00"
 
 
 class SearchConfig(BaseModel):
@@ -194,6 +200,13 @@ class SearchConfig(BaseModel):
     radius: str
     filters: List[str]
     excludeKeywords: List[str] = Field(default_factory=list)
+    employmentType: str = "Both"
+    minMatchScore: int = 70
+    postedWithin: str = "7"
+    experienceLevel: str = "Any"
+    rateMin: str = ""
+    rateMax: str = ""
+    repeatEvery: str = "Once daily"
 
 
 class PortalItem(BaseModel):
@@ -205,6 +218,7 @@ class PortalItem(BaseModel):
 class CarrierItem(BaseModel):
     name: str
     url: str
+    status: str = "Monitoring"
 
 
 class JobResult(BaseModel):
@@ -218,10 +232,14 @@ class JobResult(BaseModel):
     match: int
     hot: bool
     skills: List[str]
+    portalName: Optional[str] = None
+    portalUrl: Optional[str] = None
+    sourceUrl: Optional[str] = None
+    description: Optional[str] = None
 
 
 class AnalysisResult(BaseModel):
-    selectedJobId: int
+    selectedJobId: Optional[int] = None
     score: int
     summary: str
     hits: List[str]
@@ -229,6 +247,10 @@ class AnalysisResult(BaseModel):
     suggestions: List[str]
     experienceMatch: Optional[str] = None
     titleMatch: Optional[str] = None
+    jobDescription: Optional[str] = None
+    skillGaps: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    tailoredScore: Optional[int] = None
 
 
 class LinkedInJob(BaseModel):
@@ -241,6 +263,9 @@ class LinkedInJob(BaseModel):
     easyApply: bool
     applicants: int
     insight: str
+    linkedinUrl: Optional[str] = None
+    experienceLevel: Optional[str] = None
+    datePosted: Optional[str] = None
 
 
 class ApplicationRecord(BaseModel):
@@ -250,6 +275,10 @@ class ApplicationRecord(BaseModel):
     stage: str
     updated: str
     action: str
+    portal: str = "Direct"
+    date: str = ""
+    match: Optional[int] = None
+    postingUrl: str = ""
 
 
 class ApplicationStats(BaseModel):
@@ -257,6 +286,10 @@ class ApplicationStats(BaseModel):
     interviews: int
     actionNeeded: int
     conversion: int
+    responseRate: int = 0
+    avgMatchScore: int = 0
+    avgResponseTime: str = "—"
+    bestPlatform: str = "—"
 
 
 class ApplicationsPayload(BaseModel):
@@ -285,6 +318,16 @@ class SearchRunRequest(BaseModel):
     requiredSkills: List[str] = Field(default_factory=list)
     optionalSkills: List[str] = Field(default_factory=list)
     location: Optional[str] = None
+    radius: Optional[str] = None
+    filters: List[str] = Field(default_factory=list)
+    excludeKeywords: List[str] = Field(default_factory=list)
+    employmentType: str = "Both"
+    minMatchScore: int = Field(default=70, ge=30, le=100)
+    postedWithin: str = "7"
+    experienceLevel: str = "Any"
+    rateMin: str = ""
+    rateMax: str = ""
+    repeatEvery: str = "Once daily"
 
     @field_validator("titles")
     @classmethod
@@ -295,12 +338,64 @@ class SearchRunRequest(BaseModel):
         return clean
 
 
-class ApplyJobsRequest(BaseModel):
-    jobIds: List[int] = Field(min_length=1)
+class SearchConfigSaveRequest(BaseModel):
+    titles: List[str] = Field(default_factory=list)
+    requiredSkills: List[str] = Field(default_factory=list)
+    optionalSkills: List[str] = Field(default_factory=list)
+    location: str = ""
+    radius: str = "50 miles"
+    filters: List[str] = Field(default_factory=list)
+    excludeKeywords: List[str] = Field(default_factory=list)
+    employmentType: str = "Both Contract & Full Time"
+    minMatchScore: int = Field(default=70, ge=30, le=100)
+    postedWithin: str = "7"
+    experienceLevel: str = "Any"
+    rateMin: str = ""
+    rateMax: str = ""
+    repeatEvery: str = "Once daily"
 
 
 class AnalyzeJobRequest(BaseModel):
+    jobId: Optional[int] = None
+    jobDescription: Optional[str] = Field(default=None, min_length=20)
+
+
+class LinkedInJobSearchRequest(BaseModel):
+    query: str = ""
+    experienceLevel: str = "all"
+    employmentType: str = "all"
+    company: str = ""
+    under10Applicants: bool = False
+    datePosted: str = "all"
+    easyApplyOnly: bool = False
+
+
+class DeletePortalRequest(BaseModel):
+    name: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+
+
+class DeleteCarrierRequest(BaseModel):
+    name: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+
+
+class TailorResumeRequest(BaseModel):
     jobId: int = Field(gt=0)
+    jobDescription: Optional[str] = None
+
+
+class SaveTailoredResumeRequest(BaseModel):
+    jobId: int = Field(gt=0)
+    content: str = Field(min_length=20)
+
+
+class AutoApplyRequest(BaseModel):
+    matchThreshold: Optional[int] = Field(default=None, ge=30, le=100)
+
+
+class ApplyJobsRequest(BaseModel):
+    jobIds: List[int] = Field(min_length=1)
 
 
 class SaveJobRequest(BaseModel):
@@ -319,6 +414,7 @@ class ResumeParsedProfile(BaseModel):
     phone: Optional[str] = Field(default=None, description="Primary phone number detected in the resume.")
     location: Optional[str] = Field(default=None, description="Detected candidate location (city/state/country when present).")
     skills: List[str] = Field(default_factory=list, description="Normalized skills identified from resume content.")
+    jobTitles: List[str] = Field(default_factory=list, description="Job titles inferred from resume content.")
     yearsExperience: Optional[float] = Field(default=None, description="Estimated years of experience inferred from resume text.")
     summary: str = Field(default="", description="Short text summary extracted from the resume body.")
 
@@ -354,6 +450,9 @@ class ResumeParseResponse(BaseModel):
     mlAssessment: ResumeMlAssessment = Field(description="ML-based role-fit and skill match assessment.")
     llmAssessment: ResumeLlmAssessment = Field(description="LLM assessment output, or fallback details when disabled.")
     agentTrace: ResumeAgentTrace = Field(description="Execution trace for the parsing pipeline.")
+    profile: Optional[JobProfile] = Field(default=None, description="Updated job profile after persisting parse results.")
+    search: Optional[SearchConfig] = Field(default=None, description="Updated search config after persisting parse results.")
+    message: Optional[str] = Field(default=None, description="Human-readable status message.")
 
 
 class AddPortalRequest(BaseModel):
@@ -364,6 +463,14 @@ class AddPortalRequest(BaseModel):
 class AddCarrierRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     url: str = Field(pattern=URL_PATTERN, max_length=512)
+
+
+class ImportPortalsRequest(BaseModel):
+    portals: List[AddPortalRequest] = Field(min_length=1)
+
+
+class ImportCarriersRequest(BaseModel):
+    carriers: List[AddCarrierRequest] = Field(min_length=1)
 
 
 class DayReportRow(BaseModel):
@@ -481,7 +588,6 @@ class RegisterRequest(BaseModel):
 class AuthDemoUser(BaseModel):
     name: str
     email: str
-    password: str
     role: str
 
 

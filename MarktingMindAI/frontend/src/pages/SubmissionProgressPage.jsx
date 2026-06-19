@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useMemo, useState } from 'react'
-import { isMonthRangeValid } from '../utils/validators'
+import { isMonthRangeValid, validateSubmissionFilters } from '../utils/validators'
 
 function tone(value) {
   if (value === null || value === undefined) {
@@ -26,7 +26,8 @@ export function SubmissionProgressPage({ workspace }) {
   const [endMonth, setEndMonth] = useState(workspace?.range.end ?? '')
   const [validationMessage, setValidationMessage] = useState('')
 
-  const validRange = isMonthRangeValid(startMonth, endMonth)
+  const filterValidation = validateSubmissionFilters({ startMonth, endMonth })
+  const validRange = filterValidation.isValid
 
   const filteredMonths = useMemo(() => {
     if (!workspace) {
@@ -66,11 +67,8 @@ export function SubmissionProgressPage({ workspace }) {
               onChange={(event) => {
                 const nextStart = event.target.value
                 setStartMonth(nextStart)
-                if (!isMonthRangeValid(nextStart, endMonth)) {
-                  setValidationMessage('Start month cannot be after end month.')
-                } else {
-                  setValidationMessage('')
-                }
+                const result = validateSubmissionFilters({ startMonth: nextStart, endMonth })
+                setValidationMessage(result.isValid ? '' : Object.values(result.errors).find(Boolean) ?? '')
               }}
             />
           </label>
@@ -84,11 +82,8 @@ export function SubmissionProgressPage({ workspace }) {
               onChange={(event) => {
                 const nextEnd = event.target.value
                 setEndMonth(nextEnd)
-                if (!isMonthRangeValid(startMonth, nextEnd)) {
-                  setValidationMessage('Start month cannot be after end month.')
-                } else {
-                  setValidationMessage('')
-                }
+                const result = validateSubmissionFilters({ startMonth, endMonth: nextEnd })
+                setValidationMessage(result.isValid ? '' : Object.values(result.errors).find(Boolean) ?? '')
               }}
             />
           </label>

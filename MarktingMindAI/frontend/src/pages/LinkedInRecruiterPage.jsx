@@ -9,6 +9,7 @@ import {
   saveLinkedInSettings,
   saveLinkedInApiKeys
 } from '../api/client'
+import { isNonEmpty, isPositiveInt, pickFirstError, validateLinkedInPasteUrl, validateLinkedInSettings } from '../utils/validators'
 
 const defaultDiscoveryForm = {
   seniority: 'Any',
@@ -144,6 +145,14 @@ const LinkedInRecruiterPage = ({ currentUser, onRefresh }) => {
       showNotification('Select at least one technology keyword', 'error')
       return
     }
+    if (!isNonEmpty(discoveryForm.location, 2)) {
+      showNotification('Location is required for discovery.', 'error')
+      return
+    }
+    if (!isPositiveInt(discoveryForm.resultsPerCompany, 1, 100)) {
+      showNotification('Results per company must be between 1 and 100.', 'error')
+      return
+    }
 
     try {
       setDiscoveryLoading(true)
@@ -169,8 +178,9 @@ const LinkedInRecruiterPage = ({ currentUser, onRefresh }) => {
   }
 
   const handleEnrichProfiles = async () => {
-    if (!pasteUrl.trim()) {
-      showNotification('Enter profile URL or paste LinkedIn URLs', 'error')
+    const validation = validateLinkedInPasteUrl(pasteUrl)
+    if (!validation.isValid) {
+      showNotification(pickFirstError(validation.errors), 'error')
       return
     }
 
@@ -197,6 +207,10 @@ const LinkedInRecruiterPage = ({ currentUser, onRefresh }) => {
   const handleSendOutreach = async () => {
     if (selectedForOutreach.size === 0) {
       showNotification('Select at least one recruiter to contact', 'error')
+      return
+    }
+    if (!generatedMessage.trim() || generatedMessage.trim().length < 20) {
+      showNotification('Generate or write an outreach message (20+ characters).', 'error')
       return
     }
 
@@ -250,6 +264,12 @@ const LinkedInRecruiterPage = ({ currentUser, onRefresh }) => {
 
   const handleSaveSettings = async () => {
     if (!settingsDraft) {
+      return
+    }
+
+    const validation = validateLinkedInSettings(settingsDraft)
+    if (!validation.isValid) {
+      showNotification(pickFirstError(validation.errors), 'error')
       return
     }
 
