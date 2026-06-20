@@ -16,7 +16,6 @@ class DatabaseStatus(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     database: DatabaseStatus
-    mongodb: DatabaseStatus
     modules: List[str]
 
 
@@ -83,7 +82,10 @@ class CampaignItem(BaseModel):
 class CampaignSettings(BaseModel):
     smtpHost: str
     smtpPort: int
+    smtpUsername: str = ""
+    smtpPassword: str = ""
     senderLimit: int
+    emailDelaySeconds: int = 3
     smartWarmup: bool
     unsubscribeFooter: bool
     spamGuard: bool
@@ -91,6 +93,12 @@ class CampaignSettings(BaseModel):
     outlookSync: bool
     openTracking: bool
     aiSubjectAssist: bool
+    honorUnsubscribes: bool = True
+    bounceManagement: bool = True
+    sendgridSync: bool = False
+    aiProvider: str = "ollama"
+    aiDefaultTone: str = "professional"
+    aiPersonalization: bool = True
 
 
 class CampaignWorkspaceResponse(BaseModel):
@@ -101,6 +109,14 @@ class CampaignWorkspaceResponse(BaseModel):
     campaigns: List[CampaignItem]
     templates: List[Dict[str, str]]
     settings: CampaignSettings
+
+
+class CampaignTemplatePreviewRequest(BaseModel):
+    subject: str = Field(min_length=3, max_length=200)
+    body: str = Field(min_length=3, max_length=20000)
+    fromName: str = Field(default="", max_length=120)
+    fromEmail: str = Field(default="", max_length=255)
+    replyTo: str = Field(default="", max_length=255)
 
 
 class CampaignPreviewRequest(BaseModel):
@@ -128,6 +144,9 @@ class CampaignTestSendRequest(BaseModel):
     email: str = Field(pattern=EMAIL_PATTERN, max_length=255)
     subject: str = Field(min_length=3, max_length=200)
     body: str = Field(min_length=1, max_length=20000)
+    fromName: str = Field(default="", max_length=120)
+    fromEmail: str = Field(default="", max_length=255)
+    replyTo: str = Field(default="", max_length=255)
 
 
 class ActionResponse(BaseModel):
@@ -142,6 +161,14 @@ class CampaignLaunchRequest(BaseModel):
     recipients: List[str] = Field(min_length=1)
     scheduledFor: str = Field(min_length=5, max_length=64)
     sendNow: bool = False
+    fromName: str = Field(default="", max_length=120)
+    fromEmail: str = Field(default="", max_length=255)
+    replyTo: str = Field(default="", max_length=255)
+    openTracking: bool = True
+    autoFollowup: bool = False
+    sendingSpeed: str = Field(default="50", max_length=16)
+    emailDelaySeconds: int = Field(default=3, ge=0, le=300)
+    listName: str = Field(default="", max_length=120)
 
     @field_validator("recipients")
     @classmethod
@@ -150,6 +177,49 @@ class CampaignLaunchRequest(BaseModel):
         if invalid:
             raise ValueError("All recipients must be valid email values.")
         return value
+
+
+class CampaignLaunchResponse(BaseModel):
+    success: bool
+    message: str
+    mode: str = "demo"
+    campaign: Optional[Dict[str, Any]] = None
+    sentCount: int = 0
+    failedCount: int = 0
+
+
+class CampaignDraftRequest(BaseModel):
+    campaignName: str = Field(min_length=3, max_length=255)
+    subject: str = Field(min_length=3, max_length=200)
+    body: str = Field(min_length=3, max_length=20000)
+    fromName: str = Field(default="", max_length=120)
+    fromEmail: str = Field(default="", max_length=255)
+    replyTo: str = Field(default="", max_length=255)
+
+
+class CampaignDraftResponse(BaseModel):
+    success: bool
+    message: str
+    campaign: Optional[Dict[str, Any]] = None
+
+
+class CampaignContactImportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(pattern=EMAIL_PATTERN, max_length=255)
+    company: str = Field(default="", max_length=255)
+    list: str = Field(default="Imported", max_length=120)
+    status: str = Field(default="Queued", max_length=32)
+
+
+class CampaignContactImportRequest(BaseModel):
+    contacts: List[CampaignContactImportItem] = Field(min_length=1)
+    listName: str = Field(default="Imported", max_length=120)
+
+
+class CampaignContactImportResponse(BaseModel):
+    imported: int
+    skipped: int
+    contacts: List[Contact]
 
 
 class ContactListCreateRequest(BaseModel):
@@ -486,6 +556,8 @@ class DayReportRow(BaseModel):
 
 class DayReportDashboardResponse(BaseModel):
     range: Dict[str, str]
+    bounds: Optional[Dict[str, str]] = None
+    defaultRange: Optional[Dict[str, str]] = None
     recruiters: List[str]
     totals: Dict[str, int]
     rows: List[DayReportRow]
@@ -512,6 +584,7 @@ class SubmissionMonth(BaseModel):
 
 class SubmissionDashboardResponse(BaseModel):
     range: Dict[str, str]
+    summary: Optional[Dict[str, int]] = None
     months: List[SubmissionMonth]
 
 

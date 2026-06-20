@@ -171,10 +171,7 @@ function App() {
             <Route
               path="/"
               element={
-                <OverviewPage
-                  overview={workspace.overview}
-                  health={workspace.health}
-                />
+                <OverviewPage overview={workspace.overview} />
               }
             />
             <Route

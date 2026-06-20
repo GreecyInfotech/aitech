@@ -1,19 +1,10 @@
-import { ArrowRight, Database, Radar, Rocket, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Radar, Rocket, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-function dbStatusBadge(status) {
-  if (status === 'available') return 'success'
-  if (status === 'error') return 'danger'
-  return 'neutral'
-}
-
-export function OverviewPage({ overview, health }) {
+export function OverviewPage({ overview }) {
   if (!overview) {
     return null
   }
-
-  const sqlStatus = health?.database?.status ?? 'loading'
-  const mongoStatus = health?.mongodb?.status ?? 'loading'
 
   return (
     <div className="page-stack">
@@ -33,16 +24,6 @@ export function OverviewPage({ overview, health }) {
             <Radar size={18} />
             <strong>{overview.modules[1].metric}</strong>
             <span>Automation queue</span>
-          </div>
-          <div className={`metric-tile accent-cobalt`}>
-            <Database size={18} />
-            <strong>{sqlStatus}</strong>
-            <span>SQL health</span>
-          </div>
-          <div className={`metric-tile accent-cobalt`}>
-            <Database size={18} />
-            <strong>{mongoStatus}</strong>
-            <span>MongoDB health</span>
           </div>
         </div>
       </section>
@@ -92,23 +73,12 @@ export function OverviewPage({ overview, health }) {
         <article className="glass-card">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Database health</p>
-              <h4>Connection posture</h4>
+              <p className="eyebrow">Platform</p>
+              <h4>Workspace notes</h4>
             </div>
           </div>
-          <div className="card-list compact-list">
-            <div className="list-card list-card-inline">
-              <div><strong>SQL (SQLite / PostgreSQL)</strong><p>{health?.database?.message ?? 'Checking...'}</p></div>
-              <span className={`chip-button static ${dbStatusBadge(sqlStatus)}`}>{sqlStatus}</span>
-            </div>
-            <div className="list-card list-card-inline">
-              <div><strong>MongoDB</strong><p>{health?.mongodb?.message ?? 'Checking...'}</p></div>
-              <span className={`chip-button static ${dbStatusBadge(mongoStatus)}`}>{mongoStatus}</span>
-            </div>
-          </div>
-          <ul className="check-list" style={{ marginTop: 12 }}>
+          <ul className="check-list">
             <li>API surface is split by module-specific endpoints.</li>
-            <li>Database connection is normalized and health-checked on startup.</li>
             <li>Frontend routing preserves all child pages from the source HTML modules.</li>
             <li>Each dashboard is seeded with rich test data while you wire live tables later.</li>
           </ul>

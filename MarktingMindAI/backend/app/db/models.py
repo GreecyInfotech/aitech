@@ -114,6 +114,10 @@ class CampaignSettings(Base, TimestampMixin):
     outlook_sync: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     open_tracking: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     ai_subject_assist: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    smtp_username: Mapped[Optional[str]] = mapped_column(String(255))
+    smtp_password: Mapped[Optional[str]] = mapped_column(String(255))
+    email_delay_seconds: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    options_json: Mapped[dict[Any, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
 
 class ContactList(Base, TimestampMixin):
@@ -146,6 +150,7 @@ class CampaignTemplate(Base, TimestampMixin):
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     category: Mapped[str] = mapped_column(String(64), default="General", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255))
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
 

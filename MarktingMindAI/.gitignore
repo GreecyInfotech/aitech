@@ -24,6 +24,10 @@ frontend/dist-ssr/
 marketingmind.db
 backend/marketingmind.db
 
+# Local AI / editor config (do not commit)
+.claude/
+settings.json
+
 # IDE & OS
 .vscode/
 .idea/

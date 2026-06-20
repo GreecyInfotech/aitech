@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 
 from app.core.auth import (
     ROLE_ADMIN,
@@ -31,8 +32,14 @@ from app.schemas.api_models import (
     SaveJobRequest,
     SaveJobResponse,
     CampaignLaunchRequest,
+    CampaignLaunchResponse,
+    CampaignDraftRequest,
+    CampaignDraftResponse,
+    CampaignContactImportRequest,
+    CampaignContactImportResponse,
     CampaignPreviewRequest,
     CampaignPreviewResponse,
+    CampaignTemplatePreviewRequest,
     CampaignSettings,
     CampaignTestSendRequest,
     CampaignWorkspaceResponse,
@@ -78,7 +85,6 @@ from app.schemas.api_models import (
 )
 from app.services.resume_ai import parse_resume_with_ai
 from app.db.database import database_status
-from app.db.mongodb_config import MongoDBConnection
 from app.services.seed_data import (
     add_carrier,
     add_portal,
@@ -104,13 +110,16 @@ from app.services.seed_data import (
     import_carriers,
     import_portals,
     launch_campaign,
+    import_campaign_contacts,
     append_test_data_payload,
     preview_campaign,
+    preview_template,
     reset_test_data_payload,
     run_auto_apply,
     run_job_search,
     run_linkedin_discovery,
     save_automation_settings,
+    save_campaign_draft,
     save_campaign_settings,
     save_job,
     save_job_profile,
@@ -122,6 +131,7 @@ from app.services.seed_data import (
     search_linkedin_jobs,
     send_linkedin_outreach,
     send_test_campaign,
+    test_campaign_smtp,
     tailor_resume_for_job,
 )
 
@@ -222,7 +232,6 @@ def health_check() -> dict:
     return {
         "status": "ok",
         "database": database_status(),
-        "mongodb": MongoDBConnection.status(),
         "modules": ["overview", "campaigns", "job-automation", "day-report", "submissions", "linkedin"],
     }
 
@@ -242,14 +251,59 @@ def preview_campaign_payload(payload: CampaignPreviewRequest) -> dict:
     return preview_campaign(payload.subject, payload.body, payload.recipients)
 
 
+@router.post("/api/campaigns/templates/preview", response_model=CampaignPreviewResponse, dependencies=[Depends(require_roles(ROLE_USER, ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def preview_template_payload(payload: CampaignTemplatePreviewRequest) -> dict:
+    return preview_template(
+        payload.subject,
+        payload.body,
+        {
+            "fromName": payload.fromName,
+            "fromEmail": payload.fromEmail,
+            "replyTo": payload.replyTo,
+        },
+    )
+
+
 @router.post("/api/campaigns/test-send", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def send_campaign_test(payload: CampaignTestSendRequest) -> dict:
-    return send_test_campaign(payload.email, payload.subject, payload.body)
+    return send_test_campaign(
+        payload.email,
+        payload.subject,
+        payload.body,
+        {
+            "fromName": payload.fromName,
+            "fromEmail": payload.fromEmail,
+            "replyTo": payload.replyTo,
+        },
+    )
 
 
-@router.post("/api/campaigns/launch", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+@router.post("/api/campaigns/launch", response_model=CampaignLaunchResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
 def launch_campaign_payload(payload: CampaignLaunchRequest) -> dict:
     return launch_campaign(payload.model_dump())
+
+
+@router.post("/api/campaigns/drafts", response_model=CampaignDraftResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def save_campaign_draft_payload(payload: CampaignDraftRequest) -> dict:
+    return save_campaign_draft(payload.model_dump())
+
+
+@router.post("/api/campaigns/contacts/import", response_model=CampaignContactImportResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def import_campaign_contacts_payload(payload: CampaignContactImportRequest) -> dict:
+    return import_campaign_contacts(payload.model_dump())
+
+
+@router.post("/api/campaigns/test-smtp", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])
+def test_campaign_smtp_payload(payload: CampaignSettings) -> dict:
+    return test_campaign_smtp(payload.model_dump())
+
+
+@router.get("/api/campaigns/track/{campaign_id}/{recipient_index}")
+def track_campaign_open(campaign_id: str, recipient_index: int) -> Response:
+    return Response(
+        content=b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+        media_type="image/gif",
+    )
 
 
 @router.put("/api/campaigns/settings", response_model=ActionResponse, dependencies=[Depends(require_roles(ROLE_ADMIN, ROLE_SUPER_ADMIN))])

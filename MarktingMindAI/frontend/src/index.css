@@ -3074,3 +3074,79 @@ textarea.job-description-area {
     font-size: 24px;
   }
 }
+
+.delta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.delta-pill.positive {
+  background: rgba(48, 192, 199, 0.15);
+  color: #30c0c7;
+}
+
+.delta-pill.negative {
+  background: rgba(255, 148, 87, 0.15);
+  color: #ff9457;
+}
+
+.delta-pill.neutral {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+.submission-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.submission-calendar-header,
+.submission-calendar-row {
+  display: grid;
+  grid-template-columns: 56px repeat(12, minmax(42px, 1fr));
+  gap: 6px;
+  align-items: center;
+}
+
+.submission-calendar-header span {
+  font-size: 11px;
+  color: var(--text-light);
+  text-align: center;
+}
+
+.submission-calendar-year {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.submission-calendar-cell {
+  min-height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.submission-calendar-cell.empty {
+  color: var(--text-light);
+  cursor: default;
+}
+
+.submission-calendar-cell.active {
+  outline: 2px solid #ff9457;
+  outline-offset: 1px;
+}
+
+.submission-calendar-cell:not(.empty):hover {
+  transform: translateY(-1px);
+}

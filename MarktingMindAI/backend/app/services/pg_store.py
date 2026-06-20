@@ -21,6 +21,7 @@ from app.db.models import (
     JobAutomationSettings,
     JobProfile,
     JobResult,
+    LinkedInApiKey,
     LinkedInApiSource,
     LinkedInFollowup,
     LinkedInJob,
@@ -253,6 +254,8 @@ def get_campaign_workspace() -> dict:
                     "sent": row.sent_count,
                     "opened": row.opened_count,
                     "replied": row.replied_count,
+                    "subject": row.subject,
+                    "body": row.body,
                 }
                 for row in session.query(CampaignItem).filter(CampaignItem.user_id == user.id).all()
             ],
@@ -260,24 +263,68 @@ def get_campaign_workspace() -> dict:
                 {
                     "name": row.name,
                     "category": row.category,
+                    "description": row.description or row.category,
                     "subject": row.subject,
                     "body": row.body,
                 }
                 for row in templates
             ],
-            "settings": {
-                "smtpHost": settings.smtp_host if settings else "smtp.gmail.com",
-                "smtpPort": settings.smtp_port if settings else 587,
-                "senderLimit": settings.sender_limit if settings else 500,
-                "smartWarmup": settings.smart_warmup if settings else True,
-                "unsubscribeFooter": settings.unsubscribe_footer if settings else True,
-                "spamGuard": settings.spam_guard if settings else True,
-                "gmailSync": settings.gmail_sync if settings else False,
-                "outlookSync": settings.outlook_sync if settings else False,
-                "openTracking": settings.open_tracking if settings else True,
-                "aiSubjectAssist": settings.ai_subject_assist if settings else True,
-            },
+            "settings": _serialize_campaign_settings(settings),
         }
+
+
+def _serialize_campaign_settings(settings: CampaignSettings | None) -> dict:
+    if not settings:
+        return {
+            "smtpHost": "smtp.gmail.com",
+            "smtpPort": 587,
+            "smtpUsername": "",
+            "smtpPassword": "",
+            "senderLimit": 500,
+            "emailDelaySeconds": 3,
+            "smartWarmup": True,
+            "unsubscribeFooter": True,
+            "spamGuard": True,
+            "gmailSync": False,
+            "outlookSync": False,
+            "openTracking": True,
+            "aiSubjectAssist": True,
+        }
+    options = settings.options_json or {}
+    return {
+        "smtpHost": settings.smtp_host,
+        "smtpPort": settings.smtp_port,
+        "smtpUsername": settings.smtp_username or "",
+        "smtpPassword": settings.smtp_password or "",
+        "senderLimit": settings.sender_limit,
+        "emailDelaySeconds": settings.email_delay_seconds,
+        "smartWarmup": settings.smart_warmup,
+        "unsubscribeFooter": settings.unsubscribe_footer,
+        "spamGuard": settings.spam_guard,
+        "gmailSync": settings.gmail_sync,
+        "outlookSync": settings.outlook_sync,
+        "openTracking": settings.open_tracking,
+        "aiSubjectAssist": settings.ai_subject_assist,
+        **options,
+    }
+
+
+def _load_campaign_settings(session: Session, user_id: int) -> dict:
+    settings = session.query(CampaignSettings).filter(CampaignSettings.user_id == user_id).first()
+    return _serialize_campaign_settings(settings)
+
+
+def _load_campaign_contacts(session: Session, user_id: int) -> List[dict]:
+    return [
+        {
+            "name": row.name,
+            "email": row.email,
+            "company": row.company,
+            "status": row.status,
+            "list": row.list_name,
+        }
+        for row in session.query(CampaignContact).filter(CampaignContact.user_id == user_id).all()
+    ]
 
 
 def get_job_automation_workspace() -> dict:
@@ -1158,6 +1205,8 @@ def apply_linkedin_job(role: str, company: str, easy_apply: bool) -> dict:
 
 
 def get_day_report_dashboard() -> dict:
+    from app.services.reporting_helpers import day_report_bounds_and_defaults
+
     with session_scope() as session:
         rows = session.query(DayReportRow).order_by(DayReportRow.report_date).all()
         payload_rows = [
@@ -1179,8 +1228,10 @@ def get_day_report_dashboard() -> dict:
             "sourced": sum(row["sourced"] for row in payload_rows),
             "marketing": sum(row["marketing"] for row in payload_rows),
         }
+        meta = day_report_bounds_and_defaults([row["date"] for row in payload_rows])
         return {
             "range": {"start": payload_rows[0]["date"], "end": payload_rows[-1]["date"]} if payload_rows else {},
+            **meta,
             "recruiters": sorted({row["recruiter"] for row in payload_rows}),
             "totals": totals,
             "rows": payload_rows,
@@ -1214,6 +1265,8 @@ def filter_day_report(start: Optional[str] = None, end: Optional[str] = None, re
 
 
 def get_submission_dashboard() -> dict:
+    from app.services.reporting_helpers import submission_summary
+
     with session_scope() as session:
         months_rows = session.query(SubmissionMonth).order_by(SubmissionMonth.month).all()
         months = [{"month": row.month, "submissions": row.submissions} for row in months_rows]
@@ -1229,11 +1282,14 @@ def get_submission_dashboard() -> dict:
         enriched.append({**row, "mom": mom, "yoy": yoy})
     return {
         "range": {"start": months[0]["month"], "end": months[-1]["month"]} if months else {},
+        "summary": submission_summary(enriched),
         "months": enriched,
     }
 
 
 def filter_submissions(start_month: Optional[str] = None, end_month: Optional[str] = None) -> dict:
+    from app.services.reporting_helpers import submission_summary
+
     dashboard = get_submission_dashboard()
     months = dashboard["months"]
     if start_month:
@@ -1245,33 +1301,206 @@ def filter_submissions(start_month: Optional[str] = None, end_month: Optional[st
             "start": months[0]["month"] if months else start_month,
             "end": months[-1]["month"] if months else end_month,
         },
+        "summary": submission_summary(months),
         "months": months,
     }
 
 
 def preview_campaign(subject: str, body: str, recipients: List[str]) -> dict:
-    return seed_logic.preview_campaign(subject, body, recipients)
+    from app.services.campaign_email import build_preview
+
+    with session_scope() as session:
+        user = _workspace_user(session)
+        settings = _load_campaign_settings(session, user.id)
+        contacts = _load_campaign_contacts(session, user.id)
+        composer = {
+            "fromName": "Sarah Mitchell",
+            "fromEmail": "sarah@marketingmind.ai",
+            "replyTo": "recruiter@marketingmind.ai",
+        }
+        return build_preview(subject, body, recipients, contacts=contacts, composer=composer, settings=settings)
 
 
-def send_test_campaign(email: str, subject: str, body: str) -> dict:
-    return seed_logic.send_test_campaign(email, subject, body)
+def preview_template(subject: str, body: str, composer: Optional[dict] = None) -> dict:
+    from app.services.campaign_email import build_preview
+
+    with session_scope() as session:
+        user = _workspace_user(session)
+        settings = _load_campaign_settings(session, user.id)
+        contacts = _load_campaign_contacts(session, user.id)
+        merged_composer = {
+            "fromName": (composer or {}).get("fromName") or "Sarah Mitchell",
+            "fromEmail": (composer or {}).get("fromEmail") or "sarah@marketingmind.ai",
+            "replyTo": (composer or {}).get("replyTo") or "recruiter@marketingmind.ai",
+        }
+        recipients = [contacts[0]["email"]] if contacts else []
+        return build_preview(subject, body, recipients, contacts=contacts, composer=merged_composer, settings=settings)
+
+
+def send_test_campaign(email: str, subject: str, body: str, composer: Optional[dict] = None) -> dict:
+    from app.services.campaign_email import send_test_email
+
+    with session_scope() as session:
+        user = _workspace_user(session)
+        settings = _load_campaign_settings(session, user.id)
+        merged_composer = {
+            "fromName": (composer or {}).get("fromName") or "Sarah Mitchell",
+            "fromEmail": (composer or {}).get("fromEmail") or "sarah@marketingmind.ai",
+            "replyTo": (composer or {}).get("replyTo") or "recruiter@marketingmind.ai",
+        }
+        return send_test_email(email, subject, body, settings=settings, composer=merged_composer)
 
 
 def launch_campaign(payload: dict) -> dict:
+    from app.services.campaign_email import CampaignEmailError, launch_campaign_batch
+
     with session_scope() as session:
         user = _workspace_user(session)
-        session.add(
-            CampaignItem(
+        settings = _load_campaign_settings(session, user.id)
+        settings["emailDelaySeconds"] = payload.get("emailDelaySeconds", settings.get("emailDelaySeconds", 3))
+        if payload.get("openTracking") is not None:
+            settings["openTracking"] = payload["openTracking"]
+        contacts = _load_campaign_contacts(session, user.id)
+
+        try:
+            result = launch_campaign_batch(payload, settings=settings, contacts=contacts)
+        except CampaignEmailError as exc:
+            return {"success": False, "message": str(exc), "mode": "demo", "campaign": None, "sentCount": 0, "failedCount": 0}
+
+        campaign = result.get("campaign") or {}
+        row = CampaignItem(
+            user_id=user.id,
+            name=campaign.get("name") or payload.get("campaignName") or "New Campaign",
+            from_name=payload.get("fromName"),
+            from_email=payload.get("fromEmail"),
+            reply_to=payload.get("replyTo"),
+            subject=campaign.get("subject") or payload.get("subject", ""),
+            body=campaign.get("body") or payload.get("body", ""),
+            status=campaign.get("status") or ("Sent" if payload.get("sendNow") else "Scheduled"),
+            scheduled_for=campaign.get("scheduledFor") or payload.get("scheduledFor"),
+            sent_count=campaign.get("sent", 0),
+            opened_count=campaign.get("opened", 0),
+            replied_count=campaign.get("replied", 0),
+        )
+        session.add(row)
+        session.flush()
+
+        campaign["id"] = str(row.id)
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "mode": result.get("mode", "demo"),
+            "campaign": {
+                "name": row.name,
+                "sent": row.sent_count,
+                "opened": row.opened_count,
+                "replied": row.replied_count,
+                "status": row.status,
+                "scheduledFor": row.scheduled_for,
+                "subject": row.subject,
+                "body": row.body,
+            },
+            "sentCount": row.sent_count,
+            "failedCount": len(campaign.get("failures") or []),
+        }
+
+
+def save_campaign_draft(payload: dict) -> dict:
+    with session_scope() as session:
+        user = _workspace_user(session)
+        existing = (
+            session.query(CampaignItem)
+            .filter(CampaignItem.user_id == user.id, CampaignItem.name == payload["campaignName"], CampaignItem.status == "Draft")
+            .first()
+        )
+        if existing:
+            existing.subject = payload.get("subject", "")
+            existing.body = payload.get("body", "")
+            existing.from_name = payload.get("fromName")
+            existing.from_email = payload.get("fromEmail")
+            existing.reply_to = payload.get("replyTo")
+            row = existing
+        else:
+            row = CampaignItem(
                 user_id=user.id,
-                name=payload.get("campaignName") or payload.get("name") or "New Campaign",
+                name=payload["campaignName"],
+                from_name=payload.get("fromName"),
+                from_email=payload.get("fromEmail"),
+                reply_to=payload.get("replyTo"),
                 subject=payload.get("subject", ""),
                 body=payload.get("body", ""),
-                status="Scheduled" if payload.get("scheduleAt") else "Sent",
-                scheduled_for=payload.get("scheduleAt"),
-                sent_count=len(payload.get("recipients", [])),
+                status="Draft",
+                scheduled_for="—",
             )
-        )
-    return {"success": True, "message": "Campaign launched (simulated)."}
+            session.add(row)
+            session.flush()
+
+        draft = {
+            "name": row.name,
+            "sent": 0,
+            "opened": 0,
+            "replied": 0,
+            "status": "Draft",
+            "scheduledFor": "—",
+            "subject": row.subject,
+            "body": row.body,
+        }
+        return {"success": True, "message": f"Draft '{row.name}' saved.", "campaign": draft}
+
+
+def import_campaign_contacts(payload: dict) -> dict:
+    with session_scope() as session:
+        user = _workspace_user(session)
+        list_name = payload.get("listName") or "Imported"
+        incoming = payload.get("contacts") or []
+        existing = session.query(CampaignContact).filter(CampaignContact.user_id == user.id).all()
+        seen = {row.email.lower() for row in existing}
+        imported_rows = []
+        skipped = 0
+
+        for row in incoming:
+            email = str(row.get("email", "")).strip().lower()
+            if not email or email in seen:
+                skipped += 1
+                continue
+            seen.add(email)
+            contact = CampaignContact(
+                user_id=user.id,
+                name=row.get("name") or email.split("@")[0],
+                email=row.get("email"),
+                company=row.get("company") or email.split("@")[1],
+                status=row.get("status") or "Queued",
+                list_name=row.get("list") or list_name,
+            )
+            session.add(contact)
+            imported_rows.append(
+                {
+                    "name": contact.name,
+                    "email": contact.email,
+                    "company": contact.company,
+                    "status": contact.status,
+                    "list": contact.list_name,
+                }
+            )
+
+        list_row = session.query(ContactList).filter(ContactList.user_id == user.id, ContactList.name == list_name).first()
+        if list_row:
+            list_row.contacts_count += len(imported_rows)
+        elif imported_rows:
+            session.add(ContactList(user_id=user.id, name=list_name, contacts_count=len(imported_rows), open_rate=0, reply_rate=0))
+
+        return {"imported": len(imported_rows), "skipped": skipped, "contacts": imported_rows}
+
+
+def test_campaign_smtp(settings: Optional[dict] = None) -> dict:
+    from app.services.campaign_email import test_smtp_connection
+
+    with session_scope() as session:
+        user = _workspace_user(session)
+        merged = _load_campaign_settings(session, user.id)
+        if settings:
+            merged.update({key: value for key, value in settings.items() if value is not None})
+        return test_smtp_connection(merged)
 
 
 def save_campaign_settings(payload: dict) -> dict:
@@ -1285,7 +1514,10 @@ def save_campaign_settings(payload: dict) -> dict:
         field_map = {
             "smtpHost": "smtp_host",
             "smtpPort": "smtp_port",
+            "smtpUsername": "smtp_username",
+            "smtpPassword": "smtp_password",
             "senderLimit": "sender_limit",
+            "emailDelaySeconds": "email_delay_seconds",
             "smartWarmup": "smart_warmup",
             "unsubscribeFooter": "unsubscribe_footer",
             "spamGuard": "spam_guard",
@@ -1294,9 +1526,22 @@ def save_campaign_settings(payload: dict) -> dict:
             "openTracking": "open_tracking",
             "aiSubjectAssist": "ai_subject_assist",
         }
+        option_keys = {
+            "honorUnsubscribes",
+            "bounceManagement",
+            "sendgridSync",
+            "aiProvider",
+            "aiDefaultTone",
+            "aiPersonalization",
+        }
+        options = dict(settings.options_json or {})
         for key, attr in field_map.items():
             if key in payload and payload[key] is not None:
                 setattr(settings, attr, payload[key])
+        for key in option_keys:
+            if key in payload and payload[key] is not None:
+                options[key] = payload[key]
+        settings.options_json = options
     return {"success": True, "message": "Campaign settings saved."}
 
 
@@ -1395,7 +1640,7 @@ def get_linkedin_workspace() -> dict:
             "apiConnected": any(source["status"] == "connected" for source in api_sources),
             "pasteProfilesEnabled": True,
             "outreachEnabled": True,
-            "apiUsage": seed_logic.get_linkedin_workspace()["apiUsage"],
+            "apiUsage": deepcopy(seed_logic._LINKEDIN_API_USAGE),
             "settings": {
                 "autoRunDaily": settings.auto_run_daily if settings else True,
                 "autoEnrich": settings.auto_enrich if settings else True,
@@ -1483,8 +1728,30 @@ def save_linkedin_settings(settings: dict) -> dict:
 
 
 def save_linkedin_api_keys(keys: dict) -> dict:
-    connected = [k for k, v in keys.items() if v and str(v).strip()]
-    return {"success": True, "message": f"API keys saved for: {', '.join(connected) if connected else 'none'}."}
+    connected: List[str] = []
+    with session_scope() as session:
+        user = _workspace_user(session)
+        for provider, value in keys.items():
+            if value is None:
+                continue
+            trimmed = str(value).strip()
+            if not trimmed:
+                continue
+            existing = (
+                session.query(LinkedInApiKey)
+                .filter(LinkedInApiKey.user_id == user.id, LinkedInApiKey.provider == provider)
+                .first()
+            )
+            if existing:
+                existing.api_key = trimmed
+            else:
+                session.add(LinkedInApiKey(user_id=user.id, provider=provider, api_key=trimmed))
+            source = session.query(LinkedInApiSource).filter(LinkedInApiSource.external_id == provider).first()
+            if source:
+                source.status = "connected"
+            connected.append(provider)
+    labels = ", ".join(connected) if connected else "none"
+    return {"success": True, "message": f"API keys saved for: {labels}."}
 
 
 def get_endpoint_catalog() -> dict:

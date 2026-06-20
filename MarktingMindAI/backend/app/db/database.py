@@ -73,6 +73,26 @@ def init_sql_tables() -> None:
     if engine is None:
         return
     Base.metadata.create_all(bind=engine)
+    _apply_schema_patches(engine)
+
+
+def _apply_schema_patches(engine: Engine) -> None:
+    """Lightweight column patches for existing PostgreSQL databases."""
+    if (get_settings().database_url or "").startswith("sqlite"):
+        return
+    patches = [
+        "ALTER TABLE campaign_settings ADD COLUMN IF NOT EXISTS smtp_username VARCHAR(255)",
+        "ALTER TABLE campaign_settings ADD COLUMN IF NOT EXISTS smtp_password VARCHAR(255)",
+        "ALTER TABLE campaign_settings ADD COLUMN IF NOT EXISTS email_delay_seconds INTEGER DEFAULT 3",
+        "ALTER TABLE campaign_settings ADD COLUMN IF NOT EXISTS options_json JSONB DEFAULT '{}'::jsonb",
+        "ALTER TABLE campaign_templates ADD COLUMN IF NOT EXISTS description VARCHAR(255)",
+    ]
+    try:
+        with engine.begin() as connection:
+            for statement in patches:
+                connection.execute(text(statement))
+    except SQLAlchemyError:
+        pass
 
 
 @contextmanager

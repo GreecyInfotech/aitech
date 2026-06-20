@@ -2,11 +2,32 @@ import axios from 'axios'
 
 const AUTH_TOKEN_KEY = 'mm_auth_token'
 const AUTH_USER_KEY = 'mm_auth_user'
-const LONG_RUNNING_TIMEOUT_MS = 180000
+const DEFAULT_TIMEOUT_MS = 30000
+const LONG_RUNNING_TIMEOUT_MS = 240000
+
+const LONG_RUNNING_URL_PATTERNS = [
+  '/api/job-automation/resume/',
+  '/api/job-automation/search/run',
+  '/api/job-automation/auto-apply',
+  '/api/job-automation/analyze',
+  '/api/job-automation/linkedin/',
+  '/api/linkedin/discover',
+  '/api/linkedin/enrich',
+  '/api/linkedin/outreach',
+  '/api/linkedin/outreach/generate',
+  '/api/linkedin/settings',
+  '/api/linkedin/api-keys',
+  '/api/campaigns/launch',
+  '/api/campaigns/test-smtp',
+]
+
+function isLongRunningRequest(url = '') {
+  return LONG_RUNNING_URL_PATTERNS.some((pattern) => url.includes(pattern))
+}
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
-  timeout: 15000,
+  timeout: DEFAULT_TIMEOUT_MS,
 })
 
 api.interceptors.request.use((config) => {
@@ -15,6 +36,10 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
   }
+  const requestUrl = config.url ?? ''
+  if (config.timeout === DEFAULT_TIMEOUT_MS && isLongRunningRequest(requestUrl)) {
+    config.timeout = LONG_RUNNING_TIMEOUT_MS
+  }
   return config
 })
 
@@ -22,7 +47,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
-      error.message = 'Request timed out. Heavy AI steps (Ollama, embeddings) can take 1–3 minutes on first run — retry or set EMBEDDING_BACKEND=sklearn_tfidf in backend/.env for faster matching.'
+      const path = error?.config?.url ?? ''
+      const isHeavyAi = isLongRunningRequest(path)
+      error.message = isHeavyAi
+        ? 'Request timed out. Job search and AI steps can take up to 4 minutes on first run (Apify scrape + embeddings). Retry, or set EMBEDDING_BACKEND=sklearn_tfidf in backend/.env for faster matching.'
+        : 'Request timed out. Check that the backend is running on port 8000 and try again.'
     } else if (error?.response?.data?.detail) {
       const detail = error.response.data.detail
       if (typeof detail === 'string') {
@@ -92,7 +121,7 @@ export async function getCurrentSession() {
 
 export async function loadWorkspaceData() {
   const [health, overview, campaigns, jobAutomation, dayReport, submissions] = await Promise.all([
-    api.get('/health').catch(() => ({ data: { status: 'error', database: { status: 'unknown', message: 'Could not reach backend.' }, mongodb: { status: 'unknown', message: '' }, modules: [] } })),
+    api.get('/health').catch(() => ({ data: { status: 'error', database: { status: 'unknown', message: 'Could not reach backend.' }, modules: [] } })),
     api.get('/api/overview'),
     api.get('/api/campaigns/workspace'),
     api.get('/api/job-automation/workspace'),
@@ -116,22 +145,30 @@ export async function loadLinkedInWorkspace() {
 }
 
 export async function runLinkedInDiscovery(payload) {
-  const response = await api.post('/api/linkedin/discover', payload)
+  const response = await api.post('/api/linkedin/discover', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
 export async function enrichLinkedInProfiles(payload) {
-  const response = await api.post('/api/linkedin/enrich', payload)
+  const response = await api.post('/api/linkedin/enrich', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
 export async function sendLinkedInOutreach(payload) {
-  const response = await api.post('/api/linkedin/outreach', payload)
+  const response = await api.post('/api/linkedin/outreach', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
 export async function generateLinkedInMessage(payload) {
-  const response = await api.post('/api/linkedin/outreach/generate', payload)
+  const response = await api.post('/api/linkedin/outreach/generate', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
@@ -265,13 +302,37 @@ export async function previewCampaign(payload) {
   return response.data
 }
 
+export async function previewCampaignTemplate(payload) {
+  const response = await api.post('/api/campaigns/templates/preview', payload)
+  return response.data
+}
+
 export async function sendCampaignTest(payload) {
   const response = await api.post('/api/campaigns/test-send', payload)
   return response.data
 }
 
 export async function launchCampaign(payload) {
-  const response = await api.post('/api/campaigns/launch', payload)
+  const response = await api.post('/api/campaigns/launch', payload, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
+  return response.data
+}
+
+export async function saveCampaignDraft(payload) {
+  const response = await api.post('/api/campaigns/drafts', payload)
+  return response.data
+}
+
+export async function importCampaignContacts(payload) {
+  const response = await api.post('/api/campaigns/contacts/import', payload)
+  return response.data
+}
+
+export async function testCampaignSmtp(settings) {
+  const response = await api.post('/api/campaigns/test-smtp', settings, {
+    timeout: LONG_RUNNING_TIMEOUT_MS,
+  })
   return response.data
 }
 
@@ -287,6 +348,11 @@ export async function createCampaignList(name) {
 
 export async function filterDayReportDashboard(payload) {
   const response = await api.post('/api/day-report/filter', payload)
+  return response.data
+}
+
+export async function filterSubmissionsDashboard(payload) {
+  const response = await api.post('/api/submissions/filter', payload)
   return response.data
 }
 

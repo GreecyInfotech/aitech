@@ -127,3 +127,282 @@ textarea { resize: vertical; }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+
+.linkedin-recruiter-page {
+  padding: 13px;
+  min-height: 100%;
+}
+
+.linkedin-recruiter-page .li-hero {
+  background: #0077b5;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #fff;
+}
+
+.linkedin-recruiter-page .li-hero h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.linkedin-recruiter-page .li-hero p {
+  font-size: 11px;
+  opacity: 0.85;
+  margin: 2px 0 0;
+}
+
+.linkedin-recruiter-page .li-hero-badges {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.linkedin-recruiter-page .li-hero-badge {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 12px;
+}
+
+.linkedin-recruiter-page .live-pill-li {
+  background: #10b981;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.linkedin-recruiter-page .discover-results-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.linkedin-recruiter-page .discover-results-toolbar input,
+.linkedin-recruiter-page .discover-results-toolbar select {
+  flex: 1;
+  min-width: 120px;
+  font-size: 11px;
+}
+
+.linkedin-recruiter-page .discover-results-toolbar select {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 6px 8px;
+}
+
+.linkedin-recruiter-page .recruiter-results-scroll {
+  max-height: 620px;
+  overflow-y: auto;
+}
+
+.linkedin-recruiter-page .recruiter-card-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+
+.linkedin-recruiter-page .search-preview-box {
+  margin-top: 9px;
+  padding: 8px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #1e40af;
+}
+
+.linkedin-recruiter-page .empty-state {
+  text-align: center;
+  padding: 30px 20px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.linkedin-recruiter-page .empty-state-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 8px;
+  color: #bfdbfe;
+}
+
+.linkedin-recruiter-page .analytics-grid-li {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.linkedin-recruiter-page .analytics-tile-li {
+  border-radius: 7px;
+  padding: 9px;
+  text-align: center;
+}
+
+.linkedin-recruiter-page .analytics-tile-li strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.linkedin-recruiter-page .analytics-tile-li span {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.linkedin-recruiter-page .company-performance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 0.5px solid #f3f4f6;
+  font-size: 12px;
+}
+
+.linkedin-recruiter-page .company-performance-bar {
+  width: 60px;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.linkedin-recruiter-page .company-performance-fill {
+  height: 100%;
+  background: #0077b5;
+  border-radius: 2px;
+}
+
+.linkedin-recruiter-page .sequence-card {
+  border: 0.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.linkedin-recruiter-page .sequence-steps {
+  display: flex;
+  gap: 0;
+  position: relative;
+}
+
+.linkedin-recruiter-page .sequence-step {
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+
+.linkedin-recruiter-page .sequence-step-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 9px;
+}
+
+.linkedin-recruiter-page .sequence-step-label {
+  font-size: 9px;
+  color: #6b7280;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.linkedin-recruiter-page .sequence-step-date {
+  font-size: 9px;
+  color: #9ca3af;
+}
+
+.linkedin-recruiter-page .followup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 0.5px solid #f3f4f6;
+  font-size: 11px;
+}
+
+.linkedin-recruiter-page .followup-due {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.linkedin-recruiter-page .followup-due.today {
+  color: #dc2626;
+}
+
+.linkedin-recruiter-page .followup-due.tomorrow {
+  color: #d97706;
+}
+
+.linkedin-recruiter-page .template-row {
+  padding: 7px 9px;
+  border: 0.5px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 5px;
+  cursor: pointer;
+}
+
+.linkedin-recruiter-page .template-row:hover {
+  background: #f9fafb;
+}
+
+.linkedin-recruiter-page .template-row strong {
+  font-size: 12px;
+  color: #111827;
+}
+
+.linkedin-recruiter-page .template-row p {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.linkedin-recruiter-page .msg-type-chip {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+}
+
+.linkedin-recruiter-page .loading-inline {
+  text-align: center;
+  padding: 20px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.linkedin-recruiter-page .page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+}
+
+@media (max-width: 900px) {
+  .linkedin-recruiter-page .g2 {
+    grid-template-columns: 1fr;
+  }
+
+  .linkedin-recruiter-page .analytics-grid-li {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

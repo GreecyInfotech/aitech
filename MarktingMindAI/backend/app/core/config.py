@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     )
     allowed_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     use_seed_data: bool = False
-    use_mongodb: bool = False
     jwt_expiration_hours: int = 24
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
@@ -28,18 +27,22 @@ class Settings(BaseSettings):
     resume_parse_llm_timeout_seconds: int = 10
     resume_parse_include_llm: bool = False
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_backend: Literal["auto", "sentence_transformers", "sklearn_tfidf"] = "auto"
+    embedding_backend: Literal["auto", "sentence_transformers", "sklearn_tfidf"] = "sklearn_tfidf"
     apify_api_token: Optional[str] = None
     apify_actor_id: str = "curious_coder/linkedin-jobs-scraper"
     use_apify_scraper: bool = True
     apify_jobs_per_search: int = 25
     apify_max_wait_seconds: int = 120
 
-    # MongoDB Configuration
-    mongodb_url: Optional[str] = "mongodb://localhost:27017"
-    mongodb_db_name: Optional[str] = "marketingmind_ai"
-    min_pool_size: int = 10
-    max_pool_size: int = 50
+    # Campaign email (SMTP) — optional; UI settings override when saved
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    campaign_force_demo_mode: bool = False
+    campaign_sender_limit: int = 500
+    campaign_email_delay_seconds: float = 1.0
 
     model_config = SettingsConfigDict(
         env_file=".env",

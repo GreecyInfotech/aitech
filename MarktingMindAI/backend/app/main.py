@@ -1,10 +1,24 @@
+import threading
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.config import get_settings
-from app.db.mongodb_config import MongoDBConnection, init_collections
 from app.db.database import init_sql_tables
+
+
+def _warm_embedding_backend() -> None:
+    try:
+        from app.services.embedding_service import get_embedding_status
+
+        status = get_embedding_status()
+        if status.get("available"):
+            print(f"[OK] Embeddings ready ({status.get('backend')}: {status.get('model')})")
+        else:
+            print(f"[WARN] Embeddings unavailable: {status.get('error', 'unknown')}")
+    except Exception as exc:
+        print(f"[WARN] Embedding warmup failed: {exc}")
 
 settings = get_settings()
 
@@ -41,21 +55,13 @@ async def startup_event():
     except Exception as e:
         print(f"[WARN] SQL database init failed: {e}")
 
-    # MongoDB (optional)
-    if settings.use_mongodb:
-        try:
-            MongoDBConnection.connect()
-            init_collections()
-            print("[OK] MongoDB initialized successfully")
-        except Exception as e:
-            print(f"[WARN] MongoDB connection failed: {e}")
+    threading.Thread(target=_warm_embedding_backend, daemon=True).start()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Close database connections on shutdown"""
     print("Shutting down MarketingMind AI backend...")
-    MongoDBConnection.close()
 
 
 app.include_router(router)

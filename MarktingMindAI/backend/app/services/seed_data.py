@@ -120,6 +120,8 @@ def get_campaign_workspace() -> dict:
                 "Urgent placement",
                 "Bench sales",
                 "Re-introduction",
+                "Rate negotiation",
+                "Availability update",
             ],
         },
         "contacts": payload["campaign_contacts"],
@@ -208,6 +210,8 @@ def get_day_report_dashboard() -> dict:
     backend = _pg_backend()
     if backend:
         return backend.get_day_report_dashboard()
+    from app.services.reporting_helpers import day_report_bounds_and_defaults
+
     rows = _data()["day_report_rows"]
     totals = {
         "linkedin": sum(row["linkedin"] for row in rows),
@@ -215,8 +219,10 @@ def get_day_report_dashboard() -> dict:
         "sourced": sum(row["sourced"] for row in rows),
         "marketing": sum(row["marketing"] for row in rows),
     }
+    meta = day_report_bounds_and_defaults([row["date"] for row in rows])
     return {
         "range": {"start": rows[0]["date"], "end": rows[-1]["date"]},
+        **meta,
         "recruiters": sorted({row["recruiter"] for row in rows}),
         "totals": totals,
         "rows": rows,
@@ -227,6 +233,8 @@ def get_submission_dashboard() -> dict:
     backend = _pg_backend()
     if backend:
         return backend.get_submission_dashboard()
+    from app.services.reporting_helpers import submission_summary
+
     months = _data()["submission_months"]
     lookup = {row["month"]: row["submissions"] for row in months}
     enriched = []
@@ -240,6 +248,7 @@ def get_submission_dashboard() -> dict:
         enriched.append({**row, "mom": mom, "yoy": yoy})
     return {
         "range": {"start": months[0]["month"], "end": months[-1]["month"]},
+        "summary": submission_summary(enriched),
         "months": enriched,
     }
 
@@ -248,45 +257,153 @@ def preview_campaign(subject: str, body: str, recipients: List[str]) -> dict:
     backend = _pg_backend()
     if backend:
         return backend.preview_campaign(subject, body, recipients)
-    return {
-        "subject": subject,
-        "body": body,
-        "recipientCount": len(recipients),
-        "previewHtml": f"<h3>{subject}</h3><div>{body}</div>",
-    }
+    from app.services.campaign_email import build_preview
+
+    data = _data()
+    settings = data.get("campaign_settings", {})
+    composer = data.get("campaign_composer") or {}
+    contacts = data.get("campaign_contacts", [])
+    return build_preview(subject, body, recipients, contacts=contacts, composer=composer, settings=settings)
 
 
-def send_test_campaign(email: str, subject: str, body: str) -> dict:
+def preview_template(subject: str, body: str, composer: Optional[dict] = None) -> dict:
     backend = _pg_backend()
     if backend:
-        return backend.send_test_campaign(email, subject, body)
-    return {
-        "success": True,
-        "message": f"Test email queued to {email} with subject '{subject}'.",
-    }
+        return backend.preview_template(subject, body, composer)
+    from app.services.campaign_email import build_preview
+
+    data = _data()
+    settings = data.get("campaign_settings", {})
+    workspace_composer = {**(data.get("campaign_composer") or {}), **(composer or {})}
+    contacts = data.get("campaign_contacts", [])
+    recipients = [contacts[0]["email"]] if contacts else []
+    return build_preview(subject, body, recipients, contacts=contacts, composer=workspace_composer, settings=settings)
+
+
+def send_test_campaign(email: str, subject: str, body: str, composer: Optional[dict] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.send_test_campaign(email, subject, body, composer)
+    from app.services.campaign_email import send_test_email
+
+    data = _data()
+    settings = data.get("campaign_settings", {})
+    workspace_composer = data.get("campaign_composer") or {}
+    merged_composer = {**workspace_composer, **(composer or {})}
+    return send_test_email(email, subject, body, settings=settings, composer=merged_composer)
 
 
 def launch_campaign(payload: dict) -> dict:
     backend = _pg_backend()
     if backend:
         return backend.launch_campaign(payload)
+    from app.services.campaign_email import CampaignEmailError, launch_campaign_batch
+
     data = _data()
-    recipients = payload.get("recipients", [])
-    now_label = payload.get("scheduledFor") or datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-    campaign = {
-        "name": payload["campaignName"],
-        "sent": len(recipients),
-        "opened": max(0, round(len(recipients) * 0.38)),
-        "replied": max(0, round(len(recipients) * 0.12)),
-        "status": "Sent" if payload.get("sendNow") else "Scheduled",
-        "scheduledFor": now_label,
-    }
-    data["campaign_items"].insert(0, campaign)
+    settings = {**data.get("campaign_settings", {}), "emailDelaySeconds": payload.get("emailDelaySeconds", 3)}
+    if payload.get("openTracking") is not None:
+        settings["openTracking"] = payload["openTracking"]
+    contacts = data.get("campaign_contacts", [])
+
+    try:
+        result = launch_campaign_batch(payload, settings=settings, contacts=contacts)
+    except CampaignEmailError as exc:
+        return {"success": False, "message": str(exc), "mode": "demo", "campaign": None, "sentCount": 0, "failedCount": 0}
+
+    campaign = result.get("campaign") or {}
+    data["campaign_items"].insert(
+        0,
+        {
+            "name": campaign.get("name") or payload["campaignName"],
+            "sent": campaign.get("sent", 0),
+            "opened": campaign.get("opened", 0),
+            "replied": campaign.get("replied", 0),
+            "status": campaign.get("status") or ("Sent" if payload.get("sendNow") else "Scheduled"),
+            "scheduledFor": campaign.get("scheduledFor") or payload.get("scheduledFor"),
+            "subject": campaign.get("subject") or payload.get("subject"),
+            "body": campaign.get("body") or payload.get("body"),
+        },
+    )
     save_test_data()
     return {
-        "success": True,
-        "message": f"Campaign '{payload['campaignName']}' {'sent' if payload.get('sendNow') else 'scheduled'} for {len(recipients)} recipients.",
+        "success": result["success"],
+        "message": result["message"],
+        "mode": result.get("mode", "demo"),
+        "campaign": campaign,
+        "sentCount": campaign.get("sent", 0),
+        "failedCount": len(campaign.get("failures") or []),
     }
+
+
+def save_campaign_draft(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.save_campaign_draft(payload)
+    data = _data()
+    draft = {
+        "name": payload["campaignName"],
+        "sent": 0,
+        "opened": 0,
+        "replied": 0,
+        "status": "Draft",
+        "scheduledFor": "—",
+        "subject": payload.get("subject", ""),
+        "body": payload.get("body", ""),
+    }
+    data["campaign_items"] = [
+        item for item in data["campaign_items"] if not (item.get("name") == draft["name"] and item.get("status") == "Draft")
+    ]
+    data["campaign_items"].insert(0, draft)
+    save_test_data()
+    return {"success": True, "message": f"Draft '{payload['campaignName']}' saved.", "campaign": draft}
+
+
+def import_campaign_contacts(payload: dict) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.import_campaign_contacts(payload)
+    data = _data()
+    list_name = payload.get("listName") or "Imported"
+    incoming = payload.get("contacts") or []
+    seen = {item["email"].lower() for item in data["campaign_contacts"]}
+    imported_rows = []
+    skipped = 0
+
+    for row in incoming:
+        email = str(row.get("email", "")).strip().lower()
+        if not email or email in seen:
+            skipped += 1
+            continue
+        seen.add(email)
+        contact = {
+            "name": row.get("name") or email.split("@")[0],
+            "email": row.get("email"),
+            "company": row.get("company") or email.split("@")[1],
+            "status": row.get("status") or "Queued",
+            "list": row.get("list") or list_name,
+        }
+        data["campaign_contacts"].insert(0, contact)
+        imported_rows.append(contact)
+
+    list_row = next((item for item in data["campaign_lists"] if item["name"] == list_name), None)
+    if list_row:
+        list_row["contacts"] = list_row.get("contacts", 0) + len(imported_rows)
+    else:
+        data["campaign_lists"].insert(0, {"name": list_name, "contacts": len(imported_rows), "openRate": 0, "replyRate": 0})
+
+    save_test_data()
+    return {"imported": len(imported_rows), "skipped": skipped, "contacts": imported_rows}
+
+
+def test_campaign_smtp(settings: Optional[dict] = None) -> dict:
+    backend = _pg_backend()
+    if backend:
+        return backend.test_campaign_smtp(settings)
+    from app.services.campaign_email import test_smtp_connection
+
+    data = _data()
+    merged = {**data.get("campaign_settings", {}), **(settings or {})}
+    return test_smtp_connection(merged)
 
 
 def save_campaign_settings(payload: dict) -> dict:
@@ -1075,6 +1192,8 @@ def filter_submissions(start_month: Optional[str] = None, end_month: Optional[st
     backend = _pg_backend()
     if backend:
         return backend.filter_submissions(start_month, end_month)
+    from app.services.reporting_helpers import submission_summary
+
     dashboard = get_submission_dashboard()
     months = []
     for month in dashboard["months"]:
@@ -1085,9 +1204,10 @@ def filter_submissions(start_month: Optional[str] = None, end_month: Optional[st
         months.append(month)
     return {
         "range": {
-            "start": start_month or dashboard["range"]["start"],
-            "end": end_month or dashboard["range"]["end"],
+            "start": months[0]["month"] if months else start_month or dashboard["range"]["start"],
+            "end": months[-1]["month"] if months else end_month or dashboard["range"]["end"],
         },
+        "summary": submission_summary(months),
         "months": months,
     }
 
@@ -1177,6 +1297,13 @@ _LINKEDIN_SETTINGS = {
     "isPremium": False, "respectDnc": True, "honorUnsubscribes": True, "usePermittedSources": True,
 }
 
+_LINKEDIN_API_USAGE = [
+    {"label": "Apollo.io lookups", "used": 1240, "limit": 5000},
+    {"label": "Hunter.io searches", "used": 340, "limit": 1000},
+    {"label": "Emails found", "used": 247, "limit": None},
+    {"label": "Credits remaining", "used": 3760, "limit": None},
+]
+
 
 def get_linkedin_workspace() -> dict:
     backend = _pg_backend()
@@ -1212,12 +1339,7 @@ def get_linkedin_workspace() -> dict:
         "apiConnected": api_connected,
         "pasteProfilesEnabled": True,
         "outreachEnabled": True,
-        "apiUsage": [
-            {"label": "Apollo.io lookups", "used": 1240, "limit": 5000},
-            {"label": "Hunter.io searches", "used": 340, "limit": 1000},
-            {"label": "Emails found", "used": 247, "limit": None},
-            {"label": "Credits remaining", "used": 3760, "limit": None},
-        ],
+        "apiUsage": deepcopy(_LINKEDIN_API_USAGE),
         "settings": deepcopy(_LINKEDIN_SETTINGS),
     }
 
@@ -1329,7 +1451,17 @@ def save_linkedin_api_keys(keys: dict) -> dict:
     backend = _pg_backend()
     if backend:
         return backend.save_linkedin_api_keys(keys)
-    connected = [k for k, v in keys.items() if v and v.strip()]
+    connected = []
+    status_map = {"apollo": "apollo", "hunter": "hunter", "rocketreach": "rocketreach", "lusha": "lusha"}
+    for key, value in keys.items():
+        if not value or not str(value).strip():
+            continue
+        connected.append(key)
+        source_id = status_map.get(key)
+        if source_id:
+            for source in _LINKEDIN_API_SOURCES:
+                if source.get("id") == source_id:
+                    source["status"] = "connected"
     return {"success": True, "message": f"API keys saved for: {', '.join(connected) if connected else 'none'}."}
 
 
@@ -1342,12 +1474,11 @@ def get_endpoint_catalog() -> dict:
             {
                 "method": "GET",
                 "path": "/health",
-                "summary": "Service health with database and MongoDB status.",
+                "summary": "Service health with database status.",
                 "requestExample": None,
                 "responseExample": {
                     "status": "ok",
-                    "database": {"status": "available", "message": "SQLite connection succeeded."},
-                    "mongodb": {"status": "available", "message": "MongoDB connected to 'marketingmind_ai'."},
+                    "database": {"status": "available", "message": "PostgreSQL connection succeeded."},
                     "modules": ["overview", "campaigns", "job-automation", "day-report", "submissions", "linkedin"],
                 },
             },

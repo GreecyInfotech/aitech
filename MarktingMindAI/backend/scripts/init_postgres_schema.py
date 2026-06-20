@@ -188,6 +188,7 @@ def seed_campaigns(session: Session, data: dict, admin: User) -> None:
                 user_id=admin.id,
                 name=row["name"],
                 category=row.get("category", "General"),
+                description=row.get("description"),
                 subject=row.get("subject", row["name"]),
                 body=row.get("body", ""),
             )

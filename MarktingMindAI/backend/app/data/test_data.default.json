@@ -11,20 +11,30 @@
     {
       "name": "Java Hotlist Blast",
       "category": "Hotlist",
+      "description": "Standard hotlist email for bench consultants",
       "subject": "Available Java Developer | {{candidate_name}} | {{location}}",
       "body": "Hi {{company_name}},<br/><br/>I am sharing {{candidate_name}}, a senior Java engineer with {{skills}} and immediate {{availability}}. The candidate is open for {{rate}} and can start quickly. Let me know if you want the profile and submission packet today.<br/><br/>Regards,<br/>{{recruiter_name}}"
     },
     {
       "name": "Bench Sales Reintroduction",
       "category": "Bench",
+      "description": "Reintroduce bench consultants to vendor partners",
       "subject": "Fresh C2C consultant update | {{candidate_name}}",
       "body": "Hello {{company_name}},<br/><br/>Reintroducing {{candidate_name}} for active C2C opportunities. Core stack: {{skills}}. Current location: {{location}}. Visa: {{visa_status}}. Happy to share resume, RTR, and references on request.<br/><br/>Thanks,<br/>{{recruiter_name}}"
     },
     {
       "name": "Follow-up Sequence",
       "category": "Follow-up",
+      "description": "3-day follow-up reminder for prior outreach",
       "subject": "Following up on {{candidate_name}}",
       "body": "Hi {{company_name}},<br/><br/>Checking whether you had a chance to review {{candidate_name}}. The profile remains available and interested in relevant openings around {{location}}. I can send an updated hotlist and interview slots if helpful.<br/><br/>Best,<br/>{{recruiter_name}}"
+    },
+    {
+      "name": "Urgent Placement",
+      "category": "Urgent",
+      "description": "Time-sensitive candidate marketing",
+      "subject": "URGENT: {{skills}} Available — Immediate Start | {{location}}",
+      "body": "Hi {{recruiter_name}},<br/><br/><strong>URGENT REQUIREMENT MATCH!</strong><br/><br/>We have a {{skills}} consultant available for <strong>immediate start</strong> who is an excellent match for contract roles in {{location}}.<br/><ul><li>Availability: {{availability}}</li><li>Rate: {{rate}}</li><li>Visa: {{visa_status}}</li></ul><p>Please respond ASAP as this consultant has multiple interviews scheduled.</p><p>{{recruiter_name}} | {{company_name}}</p>"
     }
   ],
   "campaign_lists": [
@@ -41,14 +51,23 @@
   "campaign_settings": {
     "smtpHost": "smtp.office365.com",
     "smtpPort": 587,
+    "smtpUsername": "sarah@marketingmind.ai",
+    "smtpPassword": "",
     "senderLimit": 600,
+    "emailDelaySeconds": 3,
     "smartWarmup": true,
     "unsubscribeFooter": true,
+    "honorUnsubscribes": true,
+    "bounceManagement": true,
     "spamGuard": true,
     "gmailSync": true,
-    "outlookSync": true,
+    "outlookSync": false,
+    "sendgridSync": false,
     "openTracking": true,
-    "aiSubjectAssist": true
+    "aiSubjectAssist": true,
+    "aiProvider": "ollama",
+    "aiDefaultTone": "professional",
+    "aiPersonalization": true
   },
   "job_profile": {
     "name": "John Smith",
